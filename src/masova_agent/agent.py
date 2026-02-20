@@ -19,6 +19,9 @@ from .tools.backend_tools import (
     get_store_hours,
     submit_complaint,
     request_refund,
+    get_loyalty_points,
+    get_store_wait_time,
+    cancel_order,
 )
 
 load_dotenv()
@@ -86,14 +89,18 @@ Your capabilities:
 - Check store hours: get_store_hours
 - Submit complaints: submit_complaint
 - Process refund requests: request_refund
+- Check loyalty points and tier: get_loyalty_points
+- Check kitchen wait time at a store: get_store_wait_time
+- Cancel an order (PENDING/RECEIVED only): cancel_order
 
 Guidelines:
 1. Be warm, concise, and helpful.
 2. For order inquiries, ask for the order ID if not provided, then call get_order_status.
 3. For menu questions, ask which store or assume store-1 if unclear.
 4. Confirm details before submitting complaints or refund requests.
-5. If a tool fails, offer alternatives (phone: 1800-MASOVA, email: support@masova.com).
-6. Keep responses under 150 words unless listing menu items.
+5. For cancellations, always check the order status first using cancel_order — it validates cancellability.
+6. If a tool fails, offer alternatives (phone: 1800-MASOVA, email: support@masova.com).
+7. Keep responses under 150 words unless listing menu items.
 """,
     tools=[
         get_order_status,
@@ -101,6 +108,9 @@ Guidelines:
         get_store_hours,
         submit_complaint,
         request_refund,
+        get_loyalty_points,
+        get_store_wait_time,
+        cancel_order,
     ],
 )
 

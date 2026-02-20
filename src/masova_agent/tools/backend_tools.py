@@ -184,6 +184,88 @@ def submit_complaint(customer_id: str, order_id: str, description: str) -> str:
     )
 
 
+def get_loyalty_points(customer_id: str) -> str:
+    """Get the loyalty points balance, tier, and next reward threshold for a customer.
+
+    Args:
+        customer_id: The customer's unique identifier.
+
+    Returns:
+        A string describing the customer's loyalty points balance, tier level,
+        and how many more points are needed for the next reward.
+    """
+    data = _get(f"/customers/{customer_id}/stats")
+    if "error" in data:
+        return "I couldn't retrieve your loyalty points right now. Please check the app."
+    points = data.get("loyaltyPoints", 0)
+    tier = data.get("loyaltyTier", "BRONZE")
+    thresholds = {"BRONZE": 500, "SILVER": 2000, "GOLD": 5000, "PLATINUM": 10000}
+    next_tier_map = {"BRONZE": "SILVER", "SILVER": "GOLD", "GOLD": "PLATINUM", "PLATINUM": None}
+    next_tier = next_tier_map.get(tier)
+    if next_tier:
+        needed = thresholds.get(next_tier, 0) - points
+        next_info = f" You need {max(0, needed)} more points to reach {next_tier}."
+    else:
+        next_info = " You are at the highest tier — PLATINUM!"
+    return f"You have {points} loyalty points and are a {tier} member.{next_info}"
+
+
+def get_store_wait_time(store_id: str) -> str:
+    """Get the estimated current wait time at a store based on active orders in the kitchen.
+
+    Args:
+        store_id: The store's unique identifier (e.g., 'store-1').
+
+    Returns:
+        A string describing the estimated wait time for new orders at this store.
+    """
+    data = _get("/orders/kitchen/queue", params={"storeId": store_id, "status": "RECEIVED,PREPARING,OVEN"})
+    if "error" in data:
+        return "I couldn't check the current wait time. Please call the store directly."
+    active = data.get("totalElements", 0) if isinstance(data, dict) else len(data)
+    if active == 0:
+        return "Great news — the kitchen is currently free. Expect very fast service right now!"
+    elif active <= 5:
+        return f"The kitchen has {active} order(s) in progress. Estimated wait: 15–20 minutes."
+    elif active <= 10:
+        return f"The kitchen is moderately busy with {active} orders. Estimated wait: 25–35 minutes."
+    else:
+        return f"The kitchen is very busy right now ({active} active orders). Estimated wait: 40–50 minutes."
+
+
+def cancel_order(order_id: str, reason: str) -> str:
+    """Cancel a customer order if it is still in a cancellable state (PENDING or RECEIVED only).
+
+    Orders that are already being prepared cannot be cancelled.
+
+    Args:
+        order_id: The unique order identifier.
+        reason: The reason for cancellation (must be at least 5 characters).
+
+    Returns:
+        A string confirming the cancellation or explaining why it cannot be cancelled.
+    """
+    if len(reason.strip()) < 5:
+        return "Please provide a reason for cancellation (at least 5 characters)."
+    order_data = _get(f"/orders/public/{order_id}")
+    if "error" not in order_data:
+        current_status = order_data.get("status", "")
+        cancellable = {"PENDING", "RECEIVED"}
+        if current_status not in cancellable:
+            return (
+                f"Sorry, order #{order_id} cannot be cancelled — it is already {current_status}. "
+                f"Orders can only be cancelled when PENDING or RECEIVED. "
+                f"I can submit a complaint or refund request instead."
+            )
+    data = _post(f"/orders/{order_id}/cancel", {"reason": reason})
+    if "error" in data:
+        return f"I wasn't able to cancel order #{order_id} right now. Please contact the restaurant directly."
+    return (
+        f"Order #{order_id} has been successfully cancelled. Reason: {reason}. "
+        f"A refund will be processed automatically if payment was made."
+    )
+
+
 def request_refund(order_id: str, reason: str) -> str:
     """
     Request a refund for an order.
