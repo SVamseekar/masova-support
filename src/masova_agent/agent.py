@@ -7,8 +7,10 @@ from google.adk.runners import Runner
 from google.adk.sessions import InMemorySessionService
 from google.genai import types as genai_types
 import asyncio
+import json
 import logging
 import os
+import redis as redis_lib
 from dotenv import load_dotenv
 
 from .tools.backend_tools import (
@@ -24,6 +26,51 @@ logger = logging.getLogger(__name__)
 
 _session_service = InMemorySessionService()
 _created_sessions: dict[str, str] = {}  # session_key -> actual session_id
+
+
+# ---------------------------------------------------------------------------
+# Redis session persistence helpers
+# ---------------------------------------------------------------------------
+
+_redis_client = None
+
+
+def _get_redis() -> redis_lib.Redis | None:
+    """Return Redis client, or None if Redis is unavailable (graceful degradation)."""
+    global _redis_client
+    if _redis_client is not None:
+        return _redis_client
+    url = os.getenv("REDIS_URL", "redis://localhost:6379/1")
+    try:
+        client = redis_lib.from_url(url, decode_responses=True, socket_connect_timeout=2)
+        client.ping()
+        _redis_client = client
+        return client
+    except Exception:
+        return None
+
+
+CHAT_SESSION_TTL = 3600  # 1 hour
+
+
+def save_session_to_redis(session_key: str, messages: list[dict]) -> None:
+    r = _get_redis()
+    if r:
+        try:
+            r.setex(f"chat:{session_key}", CHAT_SESSION_TTL, json.dumps(messages))
+        except Exception:
+            pass  # graceful degradation
+
+
+def load_session_from_redis(session_key: str) -> list[dict]:
+    r = _get_redis()
+    if r:
+        try:
+            data = r.get(f"chat:{session_key}")
+            return json.loads(data) if data else []
+        except Exception:
+            pass
+    return []
 
 root_agent = LlmAgent(
     name="MaSoVa_Support",
