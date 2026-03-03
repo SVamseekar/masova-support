@@ -15,7 +15,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from .agent import send_message_async, save_session_to_redis, load_session_from_redis
+from .agent import send_message_async, _session_service
 
 load_dotenv()
 logger = logging.getLogger(__name__)
@@ -80,12 +80,8 @@ async def chat(request: ChatRequest):
         logger.error(f"Agent error: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Agent unavailable. Please try again.")
 
-    # Persist turn to Redis (last 10 turns, 1h TTL)
-    session_key = f"{user_id}:{session_id}"
-    history = load_session_from_redis(session_key)
-    history.append({"user": request.message.strip(), "assistant": reply})
-    if len(history) > 10:
-        history = history[-10:]
-    save_session_to_redis(session_key, history)
+    # Persist turn to Redis via session service
+    await _session_service.append_turn(session_id, "user", request.message.strip())
+    await _session_service.append_turn(session_id, "assistant", reply)
 
     return ChatResponse(reply=reply, sessionId=session_id)
