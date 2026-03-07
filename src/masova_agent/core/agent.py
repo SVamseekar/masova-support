@@ -8,7 +8,17 @@ import asyncio
 import os
 from typing import Optional
 
-from ..tools import get_system_briefing
+from ..tools import (
+    get_system_briefing,
+    get_order_status,
+    get_menu_items,
+    get_store_hours,
+    submit_complaint,
+    request_refund,
+    get_loyalty_points,
+    get_store_wait_time,
+    cancel_order,
+)
 from ..utils import get_config, get_logger, setup_logging
 from ..exceptions import AgentError
 from .redis_session_service import RedisSessionService
@@ -29,7 +39,17 @@ class MaSoVaAgent:
             name=self.config.agent.name,
             model=self.config.agent.model,
             instruction=self._get_instruction(),
-            tools=[get_system_briefing]
+            tools=[
+                get_system_briefing,
+                get_order_status,
+                get_menu_items,
+                get_store_hours,
+                submit_complaint,
+                request_refund,
+                get_loyalty_points,
+                get_store_wait_time,
+                cancel_order,
+            ]
         )
 
         # Redis-backed session service with InMemory fallback
@@ -43,19 +63,23 @@ class MaSoVaAgent:
         """Get agent instruction"""
         return """You are MaSoVa Customer Support Assistant.
 
-PROTOCOL:
-1. When the user identifies themselves (e.g., as 'Soura' or 'Soura Vamseekar'),
-   call 'get_system_briefing' with their name.
-2. IMPORTANT: You MUST output the exact text returned by the tool.
-3. Do not add extra commentary. Present the briefing clearly.
-4. After the briefing, you may assist with order inquiries, menu questions,
-   and customer support.
+CAPABILITIES:
+- Check order status: ask for order number or customer email
+- Show menu items: ask what cuisine or category they want
+- Store hours: tell customers when the store is open
+- Submit complaints: log customer complaints with category and description
+- Request refunds: initiate refunds for valid complaints
+- Check loyalty points: tell customers their points balance and how to redeem
+- Store wait time: current estimated wait for new orders
+- Cancel order: cancel if status allows (RECEIVED only)
 
-BEHAVIOR:
-- Be professional and courteous
-- Provide clear, concise responses
-- Always verify user identity before discussing orders
-- If user is not in database, politely inform them
+PROTOCOL:
+1. Greet the customer warmly
+2. Ask what you can help with
+3. Use the appropriate tool to get real data — never make up order numbers, times, or points
+4. If a tool fails, apologize and suggest contacting the store directly
+
+TONE: Professional, helpful, brief. Maximum 3 sentences per response.
 """
 
     async def _create_session_if_needed(
