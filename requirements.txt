@@ -16,6 +16,8 @@ google-cloud-aiplatform==1.137.0
 googleapis-common-protos==1.72.0
 
 redis==5.2.1
+apscheduler==3.10.4
+aio-pika==9.4.1
 
 # Optional: Development Dependencies
 # Uncomment if needed for development
