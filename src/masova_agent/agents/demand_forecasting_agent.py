@@ -39,7 +39,7 @@ async def run_demand_forecast() -> Dict[str, Any]:
             return {"error": "Could not fetch stores"}
 
         stores = stores_res.json()
-        store_ids = [s["id"] for s in (stores.get("content") or stores)]
+        store_ids = [s["id"] for s in ((stores if isinstance(stores, list) else stores.get('content') or []))]
 
         total_forecasts = 0
         for store_id in store_ids:
@@ -69,7 +69,7 @@ async def _forecast_for_store(
         return 0
 
     orders = orders_res.json()
-    orders_list = orders.get("content") or orders
+    orders_list = (orders if isinstance(orders, list) else orders.get('content') or [])
     if not orders_list:
         return 0
 

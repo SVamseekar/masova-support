@@ -93,7 +93,7 @@ async def _find_churned_customers(
     )
     if res.status_code == 200:
         data = res.json()
-        return data.get("content") or data
+        return data if isinstance(data, list) else data.get('content') or []
 
     # Fallback: get all customers and filter in Python
     all_res = await client.get(
@@ -128,13 +128,20 @@ async def _get_top_items(
         headers=headers,
     )
     if res.status_code == 200:
-        return (res.json().get("topItems") or res.json())[:3]
+        data = res.json()
+        if isinstance(data, list):
+            return data[:3]
+        items = data.get("topItems") or data.get("items") or []
+        return items[:3]
     return []
 
 
 async def _get_stores(client: httpx.AsyncClient, backend_url: str, headers: dict) -> List[Dict]:
     res = await client.get(f"{backend_url}/api/stores", headers=headers)
-    return (res.json().get("content") or res.json()) if res.status_code == 200 else []
+    if res.status_code != 200:
+        return []
+    data = res.json()
+    return data if isinstance(data, list) else data.get("content") or []
 
 
 async def _notify_managers(

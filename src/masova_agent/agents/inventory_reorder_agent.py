@@ -44,7 +44,7 @@ async def run_inventory_reorder() -> Dict[str, Any]:
                 continue
 
             inv_items = inv_res.json()
-            inv_list = inv_items.get("content") or inv_items
+            inv_list = (inv_items if isinstance(inv_items, list) else inv_items.get('content') or [])
             items_checked += len(inv_list)
 
             # Group by preferred supplier
@@ -99,7 +99,7 @@ async def _get_stores(client: httpx.AsyncClient, backend_url: str, headers: dict
     if res.status_code != 200:
         return []
     data = res.json()
-    return data.get("content") or data
+    return data if isinstance(data, list) else data.get('content') or []
 
 
 async def _notify_manager(
@@ -115,7 +115,7 @@ async def _notify_manager(
         return
 
     managers = managers_res.json()
-    for manager in (managers.get("content") or managers):
+    for manager in ((managers if isinstance(managers, list) else managers.get('content') or [])):
         await client.post(
             f"{backend_url}/api/notifications",
             json={

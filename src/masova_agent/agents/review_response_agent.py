@@ -30,6 +30,10 @@ Maximum 100 words. No marketing language. No "We value your feedback" cliches.
 
 async def draft_review_response(review_data: Dict[str, Any]) -> Dict[str, Any]:
     """Generate a draft response for a low-rating review."""
+    rating = review_data.get("rating", 5)
+    if rating > 3:
+        return {"skipped": True, "reason": "Rating > 3, no response needed"}
+
     from ..utils.config import get_config
 
     config = get_config()

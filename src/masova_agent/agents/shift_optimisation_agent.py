@@ -104,7 +104,9 @@ async def _get_stores(client, backend_url, headers) -> List[Dict]:
     if res.status_code != 200:
         return []
     data = res.json()
-    return data.get("content") or (data if isinstance(data, list) else [])
+    if isinstance(data, list):
+        return data
+    return data.get("content") or []
 
 
 async def _get_staff(client, backend_url, headers, store_id: str) -> List[Dict]:
