@@ -118,8 +118,8 @@ async def _get_staff(client, backend_url, headers, store_id: str) -> List[Dict]:
     )
     if res.status_code != 200:
         return []
-    data = res.json()
-    all_users = data.get("content") or (data if isinstance(data, list) else [])
+    from . import _unwrap
+    all_users = _unwrap(res.json())
     return [u for u in all_users if u.get("type") in SCHEDULABLE_ROLES]
 
 

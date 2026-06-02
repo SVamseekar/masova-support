@@ -77,7 +77,7 @@ async def draft_review_response(review_data: Dict[str, Any]) -> Dict[str, Any]:
 
             genai_client = GenAIClient(api_key=config.google_api_key)
             response = genai_client.models.generate_content(
-                model="gemini-2.0-flash-lite",
+                model="gemini-2.5-flash-lite-preview-06-17",
                 contents=prompt,
             )
             draft_response_text = response.text.strip()
@@ -93,7 +93,8 @@ async def draft_review_response(review_data: Dict[str, Any]) -> Dict[str, Any]:
         )
 
         if managers_res.status_code == 200:
-            for manager in (managers_res.json().get("content") or managers_res.json()):
+            from . import _unwrap
+            for manager in _unwrap(managers_res.json()):
                 await client.post(
                     f"{backend_url}/api/notifications",
                     json={

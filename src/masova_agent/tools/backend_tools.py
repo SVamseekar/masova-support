@@ -3,43 +3,50 @@ MaSoVa backend API tools for the support agent.
 Each function is registered as an ADK tool — Gemini calls them when needed.
 """
 
-import os
 import logging
 import httpx
+from ..utils.config import get_config
 
 logger = logging.getLogger(__name__)
 
-BACKEND_URL = os.getenv("MASOVA_BACKEND_URL", "http://localhost:8080/api")
-INTERNAL_TOKEN = os.getenv("MASOVA_INTERNAL_TOKEN", "")
+
+def _headers() -> dict:
+    """Build auth headers from current config."""
+    config = get_config()
+    token = config.agent_token
+    h = {"Content-Type": "application/json", "X-User-Type": "MANAGER"}
+    if token:
+        h["Authorization"] = f"Bearer {token}"
+    return h
+
+
+def _base() -> str:
+    return get_config().backend_url + "/api"
 
 
 def _get(path: str, params: dict | None = None) -> dict:
-    headers = {"Authorization": f"Bearer {INTERNAL_TOKEN}"} if INTERNAL_TOKEN else {}
     try:
-        r = httpx.get(f"{BACKEND_URL}{path}", params=params, headers=headers, timeout=8.0)
+        r = httpx.get(f"{_base()}{path}", params=params, headers=_headers(), timeout=8.0)
         r.raise_for_status()
         return r.json()
     except httpx.HTTPStatusError as e:
-        logger.warning(f"GET {path} → {e.response.status_code}")
+        logger.warning("GET %s → %s", path, e.response.status_code)
         return {"error": f"HTTP {e.response.status_code}"}
     except Exception as e:
-        logger.error(f"GET {path} failed: {e}")
+        logger.error("GET %s failed: %s", path, e)
         return {"error": str(e)}
 
 
 def _post(path: str, body: dict) -> dict:
-    headers = {"Content-Type": "application/json"}
-    if INTERNAL_TOKEN:
-        headers["Authorization"] = f"Bearer {INTERNAL_TOKEN}"
     try:
-        r = httpx.post(f"{BACKEND_URL}{path}", json=body, headers=headers, timeout=8.0)
+        r = httpx.post(f"{_base()}{path}", json=body, headers=_headers(), timeout=8.0)
         r.raise_for_status()
         return r.json()
     except httpx.HTTPStatusError as e:
-        logger.warning(f"POST {path} → {e.response.status_code}")
+        logger.warning("POST %s → %s", path, e.response.status_code)
         return {"error": f"HTTP {e.response.status_code}"}
     except Exception as e:
-        logger.error(f"POST {path} failed: {e}")
+        logger.error("POST %s failed: %s", path, e)
         return {"error": str(e)}
 
 
@@ -52,12 +59,12 @@ def get_order_status(order_id: str) -> str:
     Retrieve the current status of a customer order.
 
     Args:
-        order_id: The order ID or order number (e.g. "ORD-20260216-102").
+        order_id: The order ID (e.g. "6a1dac1881e32e63c4757801").
 
     Returns:
         Human-readable order status summary.
     """
-    data = _get(f"/orders/public/{order_id}")
+    data = _get(f"/orders/{order_id}")
     if "error" in data:
         return f"Sorry, I couldn't find order {order_id}. Please double-check the order ID."
 
@@ -69,6 +76,8 @@ def get_order_status(order_id: str) -> str:
     )
     eta = data.get("preparationTime", "")
     eta_str = f" (ETA: ~{eta} min)" if eta else ""
+    customer = data.get("customerName", "")
+    customer_str = f" for {customer}" if customer else ""
 
     status_messages = {
         "PENDING": "has been received and is pending confirmation",
@@ -77,62 +86,76 @@ def get_order_status(order_id: str) -> str:
         "OVEN": "is in the oven",
         "BAKED": "is ready and waiting for dispatch",
         "DISPATCHED": "is out for delivery",
+        "OUT_FOR_DELIVERY": "is out for delivery",
         "DELIVERED": "has been delivered",
         "COMPLETED": "is complete — thank you!",
         "SERVED": "has been served — enjoy your meal!",
         "CANCELLED": "has been cancelled",
     }
     desc = status_messages.get(status, f"is currently {status}")
+    total = data.get("total", "")
+    total_str = f" Total: €{total:.2f}." if total else ""
     return (
-        f"Order #{order_num} {desc}{eta_str}.\n"
+        f"Order #{order_num}{customer_str} {desc}{eta_str}.{total_str}\n"
         f"Items: {item_list or 'details unavailable'}."
     )
 
 
 def get_menu_items(store_id: str, category: str = "") -> str:
     """
-    Fetch available menu items for a store, optionally filtered by category.
+    Fetch available menu items for a store, optionally filtered by cuisine or category.
 
     Args:
-        store_id: Store ID to query (e.g. "store-1").
-        category: Optional category filter (e.g. "BIRYANI", "PIZZA", "DOSA").
+        store_id: Store ID to query (e.g. "DOM001" or the MongoDB ID).
+        category: Optional filter — cuisine (ITALIAN, AMERICAN, CONTINENTAL, BEVERAGES, DESSERTS)
+                  or category (PIZZA, BURGER, etc.). Case-insensitive.
 
     Returns:
         Formatted list of menu items with prices.
     """
-    params: dict = {"storeId": store_id, "available": "true"}
-    if category:
-        params["category"] = category.upper()
-
-    data = _get("/menu/items", params=params)
+    data = _get("/menu", params={"storeId": store_id, "available": "true"})
     if "error" in data:
         return "Sorry, I couldn't fetch the menu right now. Please try again shortly."
 
     items = data if isinstance(data, list) else data.get("content", data.get("items", []))
+
+    # Filter client-side by cuisine or category
+    if category:
+        cat_upper = category.upper()
+        filtered = [
+            i for i in items
+            if cat_upper in (i.get("cuisine", "") or "").upper()
+            or cat_upper in (i.get("category", "") or "").upper()
+            or cat_upper in (i.get("name", "") or "").upper()
+        ]
+        items = filtered if filtered else items  # fall back to all if no match
+
     if not items:
-        cat_str = f" in {category}" if category else ""
-        return f"No menu items found{cat_str} at this store right now."
+        return f"No menu items found at this store right now."
 
     lines = []
-    for item in items[:10]:
+    for item in items[:12]:
         name = item.get("name", "Unknown")
         price = item.get("discountedPrice") or item.get("basePrice", 0)
+        price_eur = price / 100 if price > 100 else price
         desc = item.get("description", "")
         spice = item.get("spiceLevel", "")
-        spice_str = f" [{spice}]" if spice else ""
+        spice_str = f" [{spice}]" if spice and spice != "NONE" else ""
         desc_str = f" — {desc[:60]}" if desc else ""
-        lines.append(f"- {name}{spice_str}: ₹{price:.0f}{desc_str}")
+        lines.append(f"• {name}{spice_str}: €{price_eur:.2f}{desc_str}")
 
-    more = f"\n...and {len(items) - 10} more items." if len(items) > 10 else ""
-    return "Menu items available:\n" + "\n".join(lines) + more
+    total = len(items)
+    more = f"\n...and {total - 12} more items." if total > 12 else ""
+    cat_str = f" ({category})" if category else ""
+    return f"Menu items{cat_str} at this store:\n" + "\n".join(lines) + more
 
 
 def get_store_hours(store_id: str) -> str:
     """
-    Get operating hours and current open/closed status for a store.
+    Get operating hours and status for a store.
 
     Args:
-        store_id: The store ID (e.g. "store-1").
+        store_id: The store ID (e.g. "DOM001" or MongoDB store ID).
 
     Returns:
         Store name, hours, and current open/closed status.
@@ -142,11 +165,17 @@ def get_store_hours(store_id: str) -> str:
         return "Sorry, I couldn't retrieve store information right now."
 
     name = data.get("name", f"Store {store_id}")
-    is_open = data.get("isOpen", False)
-    open_time = data.get("openingTime", "N/A")
-    close_time = data.get("closingTime", "N/A")
-    status = "currently OPEN" if is_open else "currently CLOSED"
-    return f"{name} is {status}.\nHours: {open_time} – {close_time}."
+    status = data.get("status", "UNKNOWN")
+    config = data.get("operatingConfig", {})
+    open_time = config.get("openingTime", "N/A")
+    close_time = config.get("closingTime", "N/A")
+    is_active = status == "ACTIVE"
+    status_str = "currently ACTIVE" if is_active else f"currently {status}"
+    hours_str = f"\nHours: {open_time} – {close_time}" if open_time != "N/A" else ""
+    currency = data.get("currency", "EUR")
+    locale = data.get("locale", "")
+    locale_str = f" ({locale})" if locale else ""
+    return f"{name}{locale_str} is {status_str}.{hours_str} Currency: {currency}."
 
 
 def submit_complaint(customer_id: str, order_id: str, description: str) -> str:
@@ -154,9 +183,9 @@ def submit_complaint(customer_id: str, order_id: str, description: str) -> str:
     Submit a customer complaint or support ticket for an order.
 
     Args:
-        customer_id: The customer's user ID.
+        customer_id: The customer's ID.
         order_id: The order ID the complaint relates to.
-        description: Clear description of the issue.
+        description: Clear description of the issue (minimum 10 characters).
 
     Returns:
         Confirmation with ticket reference number.
@@ -185,44 +214,58 @@ def submit_complaint(customer_id: str, order_id: str, description: str) -> str:
 
 
 def get_loyalty_points(customer_id: str) -> str:
-    """Get the loyalty points balance, tier, and next reward threshold for a customer.
+    """
+    Get the loyalty points balance, tier, and next reward threshold for a customer.
 
     Args:
-        customer_id: The customer's unique identifier.
+        customer_id: The customer's unique identifier (MongoDB ID).
 
     Returns:
-        A string describing the customer's loyalty points balance, tier level,
-        and how many more points are needed for the next reward.
+        A string describing the customer's loyalty points balance and tier level.
     """
-    data = _get(f"/customers/{customer_id}/stats")
+    data = _get(f"/customers/{customer_id}")
     if "error" in data:
-        return "I couldn't retrieve your loyalty points right now. Please check the app."
-    points = data.get("loyaltyPoints", 0)
-    tier = data.get("loyaltyTier", "BRONZE")
+        return "I couldn't retrieve your loyalty points right now. Please check the MaSoVa app."
+
+    points = data.get("loyaltyPoints") or data.get("points", 0) or 0
+    tier = data.get("loyaltyTier") or data.get("tier", "BRONZE")
+    name = data.get("name", "")
+    name_str = f"{name}, you have" if name else "You have"
+
     thresholds = {"BRONZE": 500, "SILVER": 2000, "GOLD": 5000, "PLATINUM": 10000}
     next_tier_map = {"BRONZE": "SILVER", "SILVER": "GOLD", "GOLD": "PLATINUM", "PLATINUM": None}
     next_tier = next_tier_map.get(tier)
     if next_tier:
-        needed = thresholds.get(next_tier, 0) - points
-        next_info = f" You need {max(0, needed)} more points to reach {next_tier}."
+        needed = max(0, thresholds.get(next_tier, 0) - points)
+        next_info = f" {needed} more points to reach {next_tier}." if needed > 0 else f" You're ready for {next_tier}!"
     else:
-        next_info = " You are at the highest tier — PLATINUM!"
-    return f"You have {points} loyalty points and are a {tier} member.{next_info}"
+        next_info = " You're at the highest tier — PLATINUM!"
+
+    total_orders = data.get("totalOrders", "")
+    orders_str = f" ({total_orders} orders)" if total_orders else ""
+    return f"{name_str} {points} loyalty points and are a {tier} member{orders_str}.{next_info}"
 
 
 def get_store_wait_time(store_id: str) -> str:
-    """Get the estimated current wait time at a store based on active orders in the kitchen.
+    """
+    Get the estimated current wait time at a store based on active orders.
 
     Args:
-        store_id: The store's unique identifier (e.g., 'store-1').
+        store_id: The store's unique identifier (e.g. "DOM001").
 
     Returns:
-        A string describing the estimated wait time for new orders at this store.
+        A string describing the estimated wait time for new orders.
     """
-    data = _get("/orders/kitchen/queue", params={"storeId": store_id, "status": "RECEIVED,PREPARING,OVEN"})
+    data = _get("/orders", params={
+        "storeId": store_id,
+        "status": "RECEIVED,PREPARING,OVEN",
+        "size": 1,
+    })
     if "error" in data:
         return "I couldn't check the current wait time. Please call the store directly."
+
     active = data.get("totalElements", 0) if isinstance(data, dict) else len(data)
+
     if active == 0:
         return "Great news — the kitchen is currently free. Expect very fast service right now!"
     elif active <= 5:
@@ -234,29 +277,29 @@ def get_store_wait_time(store_id: str) -> str:
 
 
 def cancel_order(order_id: str, reason: str) -> str:
-    """Cancel a customer order if it is still in a cancellable state (PENDING or RECEIVED only).
-
-    Orders that are already being prepared cannot be cancelled.
+    """
+    Cancel a customer order if it is still in a cancellable state (RECEIVED only).
 
     Args:
         order_id: The unique order identifier.
         reason: The reason for cancellation (must be at least 5 characters).
 
     Returns:
-        A string confirming the cancellation or explaining why it cannot be cancelled.
+        Confirmation or explanation of why cancellation isn't possible.
     """
     if len(reason.strip()) < 5:
         return "Please provide a reason for cancellation (at least 5 characters)."
-    order_data = _get(f"/orders/public/{order_id}")
+
+    order_data = _get(f"/orders/{order_id}")
     if "error" not in order_data:
         current_status = order_data.get("status", "")
-        cancellable = {"PENDING", "RECEIVED"}
-        if current_status not in cancellable:
+        if current_status and current_status not in {"PENDING", "RECEIVED"}:
             return (
                 f"Sorry, order #{order_id} cannot be cancelled — it is already {current_status}. "
                 f"Orders can only be cancelled when PENDING or RECEIVED. "
                 f"I can submit a complaint or refund request instead."
             )
+
     data = _post(f"/orders/{order_id}/cancel", {"reason": reason})
     if "error" in data:
         return f"I wasn't able to cancel order #{order_id} right now. Please contact the restaurant directly."
@@ -272,7 +315,7 @@ def request_refund(order_id: str, reason: str) -> str:
 
     Args:
         order_id: The order ID to refund.
-        reason: Reason for the refund request.
+        reason: Reason for the refund request (at least 5 characters).
 
     Returns:
         Confirmation or guidance on next steps.

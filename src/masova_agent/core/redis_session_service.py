@@ -50,7 +50,7 @@ class RedisSessionService:
     def _session_key(self, session_id: str) -> str:
         return f"masova:session:{session_id}"
 
-    async def create_session(self, app_name: str, user_id: str, session_id: Optional[str] = None) -> SessionData:
+    async def create_session(self, app_name: str, user_id: str, session_id: Optional[str] = None, **kwargs) -> SessionData:
         sid = session_id or str(uuid.uuid4())
         session = SessionData(id=sid, app_name=app_name, user_id=user_id)
 
@@ -66,7 +66,7 @@ class RedisSessionService:
         # Fallback
         return await self._fallback.create_session(app_name=app_name, user_id=user_id)
 
-    async def get_session(self, app_name: str, user_id: str, session_id: str) -> Optional[SessionData]:
+    async def get_session(self, app_name: str, user_id: str, session_id: str, **kwargs) -> Optional[SessionData]:
         if self._use_redis:
             try:
                 raw = self._redis.get(self._session_key(session_id))

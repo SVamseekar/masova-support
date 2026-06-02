@@ -4,6 +4,7 @@ MaSoVa Customer Support Agent
 
 from google.adk.agents import LlmAgent
 from google.adk.runners import Runner
+from google.adk.sessions import InMemorySessionService
 from google.genai import types as genai_types
 import asyncio
 import logging
@@ -25,18 +26,22 @@ from .core.redis_session_service import RedisSessionService
 load_dotenv()
 logger = logging.getLogger(__name__)
 
-# Redis-backed session service with InMemory fallback
+# ADK uses InMemorySessionService so it gets proper Session objects with .events
+_adk_session_service = InMemorySessionService()
+
+# Redis-backed service used only for append_turn history persistence
 _redis_url = os.getenv("REDIS_URL", "redis://192.168.50.88:6379/1")
 _session_service = RedisSessionService(redis_url=_redis_url)
+
 _created_sessions: dict[str, str] = {}  # session_key -> actual session_id
 
 root_agent = LlmAgent(
     name="MaSoVa_Support",
-    model="gemini-2.0-flash",
+    model="gemini-2.5-flash",
     instruction="""You are MaSoVa's friendly and efficient customer support assistant.
 
-MaSoVa is a multi-branch restaurant chain in Hyderabad, India, serving South Indian,
-North Indian, Indo-Chinese, Italian, American, Continental, and Beverage menus.
+MaSoVa is a multi-branch restaurant chain serving South Indian, North Indian,
+Indo-Chinese, Italian, American, Continental, and Beverage menus.
 
 Your capabilities:
 - Check order status: get_order_status
@@ -53,7 +58,7 @@ Guidelines:
 2. For order inquiries, ask for the order ID if not provided, then call get_order_status.
 3. For menu questions, ask which store or assume store-1 if unclear.
 4. Confirm details before submitting complaints or refund requests.
-5. For cancellations, always check the order status first using cancel_order — it validates cancellability.
+5. For cancellations, always check the order status first using cancel_order.
 6. If a tool fails, offer alternatives (phone: 1800-MASOVA, email: support@masova.com).
 7. Keep responses under 150 words unless listing menu items.
 """,
@@ -77,7 +82,7 @@ app = root_agent
 async def _ensure_session(user_id: str, session_id: str) -> str:
     key = f"{user_id}:{session_id}"
     if key not in _created_sessions:
-        session = await _session_service.create_session(
+        session = await _adk_session_service.create_session(
             app_name="masova_support",
             user_id=user_id,
         )
@@ -96,7 +101,7 @@ async def send_message_async(
     runner = Runner(
         agent=root_agent,
         app_name="masova_support",
-        session_service=_session_service,
+        session_service=_adk_session_service,
     )
     user_content = genai_types.Content(
         role="user",
@@ -108,10 +113,11 @@ async def send_message_async(
         session_id=actual_session_id,
         new_message=user_content,
     ):
-        if event.content and event.content.parts:
-            for part in event.content.parts:
-                if part.text:
-                    response_text += part.text
+        if hasattr(event, "is_final_response") and event.is_final_response():
+            if event.content and event.content.parts:
+                for part in event.content.parts:
+                    if hasattr(part, "text") and part.text:
+                        response_text += part.text
     return response_text.strip(), actual_session_id
 
 

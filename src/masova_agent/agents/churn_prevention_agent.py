@@ -104,7 +104,8 @@ async def _find_churned_customers(
     if all_res.status_code != 200:
         return []
 
-    all_customers = all_res.json().get("content") or all_res.json()
+    from . import _unwrap
+    all_customers = _unwrap(all_res.json())
     churn_cutoff = datetime.now() - timedelta(days=CHURN_WINDOW_DAYS)
 
     churned = []

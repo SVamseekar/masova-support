@@ -13,7 +13,7 @@ from ..exceptions import ConfigurationError
 class AgentConfig:
     """Agent configuration"""
     name: str = "MaSoVa_Intelligence"
-    model: str = "gemini-2.0-flash"
+    model: str = "gemini-2.5-flash"
     app_name: str = "masova_support_agent"
     max_retries: int = 3
     timeout: float = 30.0
@@ -54,11 +54,12 @@ class Config:
         Args:
             env_file: Path to .env file (default: auto-detect)
         """
-        # Load environment variables
+        # Load environment variables (override=True ensures .env values win
+        # even if the var was already set as empty in the process environment)
         if env_file:
-            load_dotenv(env_file)
+            load_dotenv(env_file, override=True)
         else:
-            load_dotenv()  # Auto-detect
+            load_dotenv(override=True)
 
         # Initialize sub-configs
         self.agent = AgentConfig()

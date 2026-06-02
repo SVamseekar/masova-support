@@ -106,10 +106,8 @@ async def _get_stores(client, backend_url, headers) -> List[Dict]:
     res = await client.get(f"{backend_url}/api/stores", headers=headers)
     if res.status_code != 200:
         return []
-    data = res.json()
-    if isinstance(data, list):
-        return data
-    return data.get("content") or []
+    from . import _unwrap
+    return _unwrap(res.json())
 
 
 async def _count_active_orders(client, backend_url, headers, store_id: str) -> int:
@@ -168,8 +166,8 @@ async def _get_slow_items(
     )
     if res.status_code != 200:
         return []
-    raw = res.json()
-    all_items = raw.get("content") or (raw if isinstance(raw, list) else [])
+    from . import _unwrap
+    all_items = _unwrap(res.json())
 
     # Get top items to exclude them from slow candidates
     top = await _get_top_items(client, backend_url, headers, store_id, limit=10)

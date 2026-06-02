@@ -14,7 +14,8 @@ from contextlib import asynccontextmanager
 from typing import Optional
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException
+import fastapi
+from fastapi import FastAPI, HTTPException, Body
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -51,6 +52,10 @@ async def _start_review_consumer():
 
 @asynccontextmanager
 async def lifespan(app_instance: FastAPI):
+    # Reload config to pick up any .env changes made after module import
+    from .utils.config import reload_config
+    reload_config()
+
     # Start scheduler
     scheduler.start()
     register_jobs()
@@ -156,7 +161,7 @@ async def trigger_churn_prevention():
 
 
 @app.post("/agents/review-response/trigger")
-async def trigger_review_response(review_data: dict):
+async def trigger_review_response(review_data: dict = Body(...)):
     from .agents.review_response_agent import draft_review_response
     return await draft_review_response(review_data)
 
