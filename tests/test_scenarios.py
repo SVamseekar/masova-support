@@ -7,7 +7,8 @@ from pathlib import Path
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from masova_agent import send_message, get_logger
+from masova_agent.agent import send_message
+from masova_agent.utils import get_logger
 
 logger = get_logger(__name__)
 

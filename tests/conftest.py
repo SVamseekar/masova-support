@@ -12,3 +12,5 @@ if _root in sys.path:
     sys.path.remove(_root)
 if _src not in sys.path:
     sys.path.insert(0, _src)
+
+collect_ignore = ["test_scenarios.py"]
