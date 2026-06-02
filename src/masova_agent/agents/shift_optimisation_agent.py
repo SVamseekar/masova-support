@@ -42,9 +42,11 @@ async def run_shift_optimisation() -> Dict[str, Any]:
             logger.warning("Shift Optimisation: no stores found")
             return {"status": "no_stores", "shifts_drafted": 0}
 
-        # Next week Monday→Sunday
+        # Next week Monday→Sunday (always at least 1 day ahead)
         today = datetime.now()
-        days_until_monday = (7 - today.weekday()) % 7 or 7
+        days_until_monday = (7 - today.weekday()) % 7
+        if days_until_monday == 0:
+            days_until_monday = 7
         week_start = today + timedelta(days=days_until_monday)
 
         for store in stores:
@@ -216,7 +218,8 @@ async def _notify_managers(client, backend_url, headers, store_id, message):
     )
     if managers_res.status_code != 200:
         return
-    for manager in (managers_res.json().get("content") or managers_res.json()):
+    from . import _unwrap
+    for manager in _unwrap(managers_res.json()):
         await client.post(
             f"{backend_url}/api/notifications",
             json={

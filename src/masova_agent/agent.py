@@ -90,7 +90,8 @@ async def send_message_async(
     message: str,
     user_id: str = "anonymous",
     session_id: str = "default",
-) -> str:
+) -> tuple[str, str]:
+    """Returns (reply_text, actual_session_id) so callers can persist turns correctly."""
     actual_session_id = await _ensure_session(user_id, session_id)
     runner = Runner(
         agent=root_agent,
@@ -111,7 +112,7 @@ async def send_message_async(
             for part in event.content.parts:
                 if part.text:
                     response_text += part.text
-    return response_text.strip()
+    return response_text.strip(), actual_session_id
 
 
 def send_message(

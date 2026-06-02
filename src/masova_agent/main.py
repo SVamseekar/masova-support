@@ -56,12 +56,13 @@ async def lifespan(app_instance: FastAPI):
     register_jobs()
     logger.info("APScheduler started with %d jobs", len(scheduler.get_jobs()))
 
-    # Start RabbitMQ consumer in background
-    asyncio.create_task(_start_review_consumer())
+    # Start RabbitMQ consumer; hold reference so it is not GC'd
+    _review_task = asyncio.create_task(_start_review_consumer())
 
     yield
 
     # Shutdown
+    _review_task.cancel()
     scheduler.shutdown(wait=False)
     logger.info("APScheduler stopped")
 
@@ -117,7 +118,7 @@ async def chat(request: ChatRequest):
     user_id = request.customerId or f"anon-{session_id}"
 
     try:
-        reply = await send_message_async(
+        reply, actual_session_id = await send_message_async(
             message=request.message.strip(),
             user_id=user_id,
             session_id=session_id,
@@ -126,8 +127,8 @@ async def chat(request: ChatRequest):
         logger.error("Agent error: %s", e, exc_info=True)
         raise HTTPException(status_code=500, detail="Agent unavailable. Please try again.")
 
-    await _session_service.append_turn(session_id, "user", request.message.strip())
-    await _session_service.append_turn(session_id, "assistant", reply)
+    await _session_service.append_turn(actual_session_id, "user", request.message.strip())
+    await _session_service.append_turn(actual_session_id, "assistant", reply)
 
     return ChatResponse(reply=reply, sessionId=session_id)
 

@@ -58,8 +58,11 @@ class CustomerRepository:
 
     def save(self, customer: Customer) -> None:
         """Save or update customer"""
-        # Generate key if new customer
-        key = f"c{len(self._customers) + 1}"
+        existing = next(
+            (k for k, v in self._customers.items() if v["customerId"] == customer.customer_id),
+            None,
+        )
+        key = existing or f"c{max((int(k[1:]) for k in self._customers if k[1:].isdigit()), default=0) + 1}"
         self._customers[key] = customer.to_dict()
 
 
@@ -129,5 +132,9 @@ class OrderRepository:
 
     def save(self, order: Order) -> None:
         """Save or update order"""
-        key = f"ord{len(self._orders) + 1}"
+        existing = next(
+            (k for k, v in self._orders.items() if v["orderId"] == order.order_id),
+            None,
+        )
+        key = existing or f"ord{max((int(k[3:]) for k in self._orders if k[3:].isdigit()), default=0) + 1}"
         self._orders[key] = order.to_dict()

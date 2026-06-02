@@ -187,8 +187,9 @@ async def _notify_managers(
     if managers_res.status_code != 200:
         return 0
 
+    from . import _unwrap
     count = 0
-    for manager in (managers_res.json().get("content") or managers_res.json()):
+    for manager in _unwrap(managers_res.json()):
         res = await client.post(
             f"{backend_url}/api/notifications",
             json={
