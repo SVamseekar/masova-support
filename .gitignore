@@ -70,3 +70,6 @@ logs/
 
 # Old structure (to be removed after migration)
 /masova_agent/
+
+# Git worktrees
+.worktrees/
