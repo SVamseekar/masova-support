@@ -432,3 +432,140 @@ class TestSessionIdentityBinding:
 
         for record in caplog.records:
             assert attacker_id not in record.getMessage()
+
+
+# ---------------------------------------------------------------------------
+# Task 3: X-User-Type header — now sends AGENT instead of hardcoded MANAGER
+# ---------------------------------------------------------------------------
+
+class TestUserTypeHeader:
+    """Verify outbound calls no longer claim MANAGER privilege unconditionally."""
+
+    def test_get_order_status_sends_agent_header(self):
+        """Outbound call to fetch order status must include X-User-Type: AGENT."""
+        from masova_agent.tools.backend_tools import get_order_status
+        with patch("masova_agent.tools.backend_tools.httpx.get") as mock_get:
+            mock_get.return_value = _mock_get(200, {
+                "status": "RECEIVED",
+                "orderNumber": "ORD-1",
+                "items": [],
+            })
+            get_order_status("ORD-1", _tool_context("CUST-1"))
+            headers = mock_get.call_args.kwargs.get("headers", {})
+        assert headers.get("X-User-Type") == "AGENT", \
+            f"Expected X-User-Type: AGENT, got {headers.get('X-User-Type')}"
+
+    def test_get_menu_items_sends_agent_header(self):
+        """Menu fetch must not claim MANAGER privilege."""
+        from masova_agent.tools.backend_tools import get_menu_items
+        with patch("masova_agent.tools.backend_tools.httpx.get") as mock_get:
+            mock_get.return_value = _mock_get(200, {"content": []})
+            get_menu_items("store-1")
+            headers = mock_get.call_args.kwargs.get("headers", {})
+        assert headers.get("X-User-Type") == "AGENT"
+
+    def test_get_store_hours_sends_agent_header(self):
+        """Store hours fetch must not claim MANAGER privilege."""
+        from masova_agent.tools.backend_tools import get_store_hours
+        with patch("masova_agent.tools.backend_tools.httpx.get") as mock_get:
+            mock_get.return_value = _mock_get(200, {
+                "name": "Store",
+                "status": "ACTIVE",
+            })
+            get_store_hours("store-1")
+            headers = mock_get.call_args.kwargs.get("headers", {})
+        assert headers.get("X-User-Type") == "AGENT"
+
+    def test_submit_complaint_sends_agent_header(self):
+        """Complaint submission must not claim MANAGER privilege."""
+        from masova_agent.tools.backend_tools import submit_complaint
+        with patch("masova_agent.tools.backend_tools.httpx.post") as mock_post:
+            mock_post.return_value = _mock_post(201, {"id": "TKT-1"})
+            submit_complaint("CUST-1", "ORD-001", "Food was cold and arrived late", _tool_context("CUST-1"))
+            headers = mock_post.call_args.kwargs.get("headers", {})
+        assert headers.get("X-User-Type") == "AGENT"
+
+    def test_get_loyalty_points_sends_agent_header(self):
+        """Loyalty points fetch must not claim MANAGER privilege."""
+        from masova_agent.tools.backend_tools import get_loyalty_points
+        with patch("masova_agent.tools.backend_tools.httpx.get") as mock_get:
+            mock_get.return_value = _mock_get(200, {
+                "loyaltyPoints": 100,
+                "loyaltyTier": "BRONZE",
+            })
+            get_loyalty_points("CUST-1", _tool_context("CUST-1"))
+            headers = mock_get.call_args.kwargs.get("headers", {})
+        assert headers.get("X-User-Type") == "AGENT"
+
+    def test_get_store_wait_time_sends_agent_header(self):
+        """Wait time fetch must not claim MANAGER privilege."""
+        from masova_agent.tools.backend_tools import get_store_wait_time
+        with patch("masova_agent.tools.backend_tools.httpx.get") as mock_get:
+            mock_get.return_value = _mock_get(200, {"totalElements": 0})
+            get_store_wait_time("store-1")
+            headers = mock_get.call_args.kwargs.get("headers", {})
+        assert headers.get("X-User-Type") == "AGENT"
+
+    def test_cancel_order_sends_agent_header(self):
+        """Order cancellation must not claim MANAGER privilege."""
+        from masova_agent.tools.backend_tools import cancel_order
+        with patch("masova_agent.tools.backend_tools.httpx.get") as mock_get, \
+             patch("masova_agent.tools.backend_tools.httpx.post") as mock_post:
+            mock_get.return_value = _mock_get(200, {"status": "RECEIVED"})
+            mock_post.return_value = _mock_post(200, {"status": "CANCELLED"})
+            cancel_order("ORD-001", "Changed my mind", _tool_context("CUST-1"))
+            headers = mock_post.call_args.kwargs.get("headers", {})
+        assert headers.get("X-User-Type") == "AGENT"
+
+    def test_request_refund_sends_agent_header(self):
+        """Refund request must not claim MANAGER privilege."""
+        from masova_agent.tools.backend_tools import request_refund
+        with patch("masova_agent.tools.backend_tools.httpx.post") as mock_post:
+            mock_post.return_value = _mock_post(201, {"refundId": "REF-1"})
+            request_refund("ORD-001", "Wrong items delivered", _tool_context("CUST-1"))
+            headers = mock_post.call_args.kwargs.get("headers", {})
+        assert headers.get("X-User-Type") == "AGENT"
+
+    def test_outbound_calls_never_include_manager_header(self):
+        """Comprehensive check: no outbound call should ever include X-User-Type: MANAGER."""
+        from masova_agent.tools.backend_tools import (
+            get_order_status,
+            get_menu_items,
+            get_store_hours,
+            submit_complaint,
+            get_loyalty_points,
+            get_store_wait_time,
+            cancel_order,
+            request_refund,
+        )
+
+        functions_to_test = [
+            (get_order_status, ("ORD-1", _tool_context("CUST-1")), "httpx.get"),
+            (get_menu_items, ("store-1",), "httpx.get"),
+            (get_store_hours, ("store-1",), "httpx.get"),
+            (submit_complaint, ("CUST-1", "ORD-1", "Food was cold", _tool_context("CUST-1")), "httpx.post"),
+            (get_loyalty_points, ("CUST-1", _tool_context("CUST-1")), "httpx.get"),
+            (get_store_wait_time, ("store-1",), "httpx.get"),
+            (cancel_order, ("ORD-1", "reason", _tool_context("CUST-1")), "httpx.post"),
+            (request_refund, ("ORD-1", "reason", _tool_context("CUST-1")), "httpx.post"),
+        ]
+
+        for func, args, mock_target in functions_to_test:
+            with patch(f"masova_agent.tools.backend_tools.{mock_target}") as mock_http:
+                if "get" in mock_target:
+                    mock_http.return_value = _mock_get(200, {"status": "RECEIVED", "content": []})
+                else:
+                    mock_http.return_value = _mock_post(200, {"id": "test"})
+
+                try:
+                    func(*args)
+                except Exception:
+                    pass  # We're only interested in the headers call
+
+                if mock_http.called:
+                    headers = mock_http.call_args.kwargs.get("headers", {})
+                    user_type = headers.get("X-User-Type")
+                    assert user_type != "MANAGER", \
+                        f"{func.__name__} incorrectly sent X-User-Type: MANAGER"
+                    assert user_type == "AGENT", \
+                        f"{func.__name__} should send X-User-Type: AGENT, got {user_type}"

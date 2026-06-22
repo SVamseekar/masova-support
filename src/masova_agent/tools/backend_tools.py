@@ -23,13 +23,25 @@ def _session_customer_id(tool_context: ToolContext) -> str | None:
     return tool_context.state.get("customer_id")
 
 
-def _headers() -> dict:
-    """Build auth headers from current config."""
+def _headers(customer_id: str | None = None) -> dict:
+    """Build auth headers from current config.
+
+    Args:
+        customer_id: Optional verified customer ID from the session (via
+            tool_context.state). Used to forward customer context to the backend.
+            If None, the agent makes unauthenticated or generic requests.
+
+    Returns:
+        Dict of HTTP headers with X-User-Type: AGENT (never MANAGER —
+        this service acts as an agent on behalf of customers, not as a manager).
+    """
     config = get_config()
     token = config.agent_token
-    h = {"Content-Type": "application/json", "X-User-Type": "MANAGER"}
+    h = {"Content-Type": "application/json", "X-User-Type": "AGENT"}
     if token:
         h["Authorization"] = f"Bearer {token}"
+    if customer_id:
+        h["X-Customer-Id"] = customer_id
     return h
 
 
@@ -37,9 +49,19 @@ def _base() -> str:
     return get_config().backend_url + "/api"
 
 
-def _get(path: str, params: dict | None = None) -> dict:
+def _get(path: str, params: dict | None = None, customer_id: str | None = None) -> dict:
+    """Make an authenticated GET request to the backend.
+
+    Args:
+        path: API path (e.g. "/orders/123").
+        params: Optional query parameters.
+        customer_id: Optional verified customer ID to forward in headers.
+
+    Returns:
+        Parsed JSON response or {"error": "..."} on failure.
+    """
     try:
-        r = httpx.get(f"{_base()}{path}", params=params, headers=_headers(), timeout=8.0)
+        r = httpx.get(f"{_base()}{path}", params=params, headers=_headers(customer_id), timeout=8.0)
         r.raise_for_status()
         return r.json()
     except httpx.HTTPStatusError as e:
@@ -50,9 +72,19 @@ def _get(path: str, params: dict | None = None) -> dict:
         return {"error": str(e)}
 
 
-def _post(path: str, body: dict) -> dict:
+def _post(path: str, body: dict, customer_id: str | None = None) -> dict:
+    """Make an authenticated POST request to the backend.
+
+    Args:
+        path: API path (e.g. "/orders/123/cancel").
+        body: Request body as a dict (will be JSON-encoded).
+        customer_id: Optional verified customer ID to forward in headers.
+
+    Returns:
+        Parsed JSON response or {"error": "..."} on failure.
+    """
     try:
-        r = httpx.post(f"{_base()}{path}", json=body, headers=_headers(), timeout=8.0)
+        r = httpx.post(f"{_base()}{path}", json=body, headers=_headers(customer_id), timeout=8.0)
         r.raise_for_status()
         return r.json()
     except httpx.HTTPStatusError as e:
@@ -79,7 +111,7 @@ def get_order_status(order_id: str, tool_context: ToolContext) -> str:
     """
     session_customer_id = _session_customer_id(tool_context)
     params = {"customerId": session_customer_id} if session_customer_id else None
-    data = _get(f"/orders/{order_id}", params=params)
+    data = _get(f"/orders/{order_id}", params=params, customer_id=session_customer_id)
     if "error" in data:
         return f"Sorry, I couldn't find order {order_id}. Please double-check the order ID."
 
@@ -128,7 +160,7 @@ def get_menu_items(store_id: str, category: str = "") -> str:
     Returns:
         Formatted list of menu items with prices.
     """
-    data = _get("/menu", params={"storeId": store_id, "available": "true"})
+    data = _get("/menu", params={"storeId": store_id, "available": "true"}, customer_id=None)
     if "error" in data:
         return "Sorry, I couldn't fetch the menu right now. Please try again shortly."
 
@@ -175,7 +207,7 @@ def get_store_hours(store_id: str) -> str:
     Returns:
         Store name, hours, and current open/closed status.
     """
-    data = _get(f"/stores/{store_id}")
+    data = _get(f"/stores/{store_id}", customer_id=None)
     if "error" in data:
         return "Sorry, I couldn't retrieve store information right now."
 
@@ -220,7 +252,7 @@ def submit_complaint(customer_id: str, order_id: str, description: str, tool_con
         "orderId": order_id,
         "description": description,
         "type": "COMPLAINT",
-    })
+    }, customer_id=session_customer_id)
 
     if "error" in data:
         return (
@@ -255,7 +287,7 @@ def get_loyalty_points(customer_id: str, tool_context: ToolContext) -> str:
     if not session_customer_id:
         return "I couldn't verify your account to look up loyalty points. Please log in and try again."
 
-    data = _get(f"/customers/{session_customer_id}")
+    data = _get(f"/customers/{session_customer_id}", customer_id=session_customer_id)
     if "error" in data:
         return "I couldn't retrieve your loyalty points right now. Please check the MaSoVa app."
 
@@ -292,7 +324,7 @@ def get_store_wait_time(store_id: str) -> str:
         "storeId": store_id,
         "status": "RECEIVED,PREPARING,OVEN",
         "size": 1,
-    })
+    }, customer_id=None)
     if "error" in data:
         return "I couldn't check the current wait time. Please call the store directly."
 
@@ -324,7 +356,7 @@ def cancel_order(order_id: str, reason: str, tool_context: ToolContext) -> str:
 
     session_customer_id = _session_customer_id(tool_context)
     params = {"customerId": session_customer_id} if session_customer_id else None
-    order_data = _get(f"/orders/{order_id}", params=params)
+    order_data = _get(f"/orders/{order_id}", params=params, customer_id=session_customer_id)
     if "error" not in order_data:
         current_status = order_data.get("status", "")
         if current_status and current_status not in {"PENDING", "RECEIVED"}:
@@ -334,7 +366,7 @@ def cancel_order(order_id: str, reason: str, tool_context: ToolContext) -> str:
                 f"I can submit a complaint or refund request instead."
             )
 
-    data = _post(f"/orders/{order_id}/cancel", {"reason": reason, "customerId": session_customer_id})
+    data = _post(f"/orders/{order_id}/cancel", {"reason": reason, "customerId": session_customer_id}, customer_id=session_customer_id)
     if "error" in data:
         return f"I wasn't able to cancel order #{order_id} right now. Please contact the restaurant directly."
     return (
@@ -362,7 +394,7 @@ def request_refund(order_id: str, reason: str, tool_context: ToolContext) -> str
         "orderId": order_id,
         "reason": reason,
         "customerId": session_customer_id,
-    })
+    }, customer_id=session_customer_id)
 
     if "error" in data:
         return (
