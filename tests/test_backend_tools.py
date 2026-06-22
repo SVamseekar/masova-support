@@ -394,3 +394,41 @@ class TestSessionIdentityBinding:
             called_path = mock_get.call_args.args[0] if mock_get.call_args else ""
         assert "attacker-id" not in called_path
         assert "couldn't" in result.lower() or "verify" in result.lower() or "log in" in result.lower()
+
+    def test_unused_customer_id_arg_never_appears_in_logs(self, caplog):
+        """Closes the gap flagged in review: the LLM-visible but unused/ignored
+        `customer_id` argument on submit_complaint/get_loyalty_points (and the
+        analogous session-bound argument handling in get_order_status,
+        request_refund, cancel_order) must never reach logger.* output, even on
+        the error path where _get/_post log status info. If a future edit wires
+        this dead parameter into a log line, this test catches it."""
+        from masova_agent.tools.backend_tools import (
+            get_order_status,
+            submit_complaint,
+            get_loyalty_points,
+            request_refund,
+            cancel_order,
+        )
+
+        attacker_id = "attacker-style-id-9999"
+        session_id = "real-session-cust"
+
+        with caplog.at_level("DEBUG"):
+            with patch("masova_agent.tools.backend_tools.httpx.get") as mock_get:
+                mock_get.side_effect = Exception("boom")
+                get_order_status("ORD-1", _tool_context(session_id))
+                get_loyalty_points(attacker_id, _tool_context(session_id))
+
+            with patch("masova_agent.tools.backend_tools.httpx.post") as mock_post:
+                mock_post.side_effect = Exception("boom")
+                submit_complaint(attacker_id, "ORD-1", "Food was cold and arrived late", _tool_context(session_id))
+                request_refund("ORD-1", "Wrong items delivered", _tool_context(session_id))
+
+            with patch("masova_agent.tools.backend_tools.httpx.get") as mock_get, \
+                 patch("masova_agent.tools.backend_tools.httpx.post") as mock_post:
+                mock_get.return_value = _mock_get(200, {"status": "RECEIVED"})
+                mock_post.side_effect = Exception("boom")
+                cancel_order("ORD-1", "Changed my mind", _tool_context(session_id))
+
+        for record in caplog.records:
+            assert attacker_id not in record.getMessage()

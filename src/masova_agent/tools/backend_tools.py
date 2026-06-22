@@ -198,7 +198,10 @@ def submit_complaint(customer_id: str, order_id: str, description: str, tool_con
     Submit a customer complaint or support ticket for an order.
 
     Args:
-        customer_id: The customer's ID.
+        customer_id: UNUSED / IGNORED. Kept only to avoid changing the LLM-facing
+            tool schema — the LLM may populate this from chat text, but it is never
+            read. Do not wire this into the request body or any log line; the real,
+            verified customer id comes from `_session_customer_id(tool_context)`.
         order_id: The order ID the complaint relates to.
         description: Clear description of the issue (minimum 10 characters).
 
@@ -208,6 +211,9 @@ def submit_complaint(customer_id: str, order_id: str, description: str, tool_con
     if len(description.strip()) < 10:
         return "Please provide more detail about the issue so we can help you effectively."
 
+    # `customer_id` (the function argument above) is intentionally never read
+    # here — it's LLM-controlled and untrusted. The verified identity is the
+    # session-bound one resolved below.
     session_customer_id = _session_customer_id(tool_context)
     data = _post("/reviews/complaints", {
         "customerId": session_customer_id,
@@ -234,11 +240,17 @@ def get_loyalty_points(customer_id: str, tool_context: ToolContext) -> str:
     Get the loyalty points balance, tier, and next reward threshold for a customer.
 
     Args:
-        customer_id: The customer's unique identifier (MongoDB ID).
+        customer_id: UNUSED / IGNORED. Kept only to avoid changing the LLM-facing
+            tool schema — the LLM may populate this from chat text, but it is never
+            read. Do not wire this into the request path or any log line; the real,
+            verified customer id comes from `_session_customer_id(tool_context)`.
 
     Returns:
         A string describing the customer's loyalty points balance and tier level.
     """
+    # `customer_id` (the function argument above) is intentionally never read
+    # here — it's LLM-controlled and untrusted. The verified identity is the
+    # session-bound one resolved below.
     session_customer_id = _session_customer_id(tool_context)
     if not session_customer_id:
         return "I couldn't verify your account to look up loyalty points. Please log in and try again."
