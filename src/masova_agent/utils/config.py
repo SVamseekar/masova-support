@@ -76,6 +76,12 @@ class Config:
         self.google_api_key: str = self.api.google_api_key
         self.rabbitmq_url: str = os.getenv("RABBITMQ_URL", "amqp://guest:guest@192.168.50.88:5672/")
 
+        # Inbound auth: distinct from agent_token (which is used for OUTBOUND
+        # calls this service makes to the backend). These gate INBOUND calls
+        # to this service's own endpoints.
+        self.agent_api_key: str = os.getenv("AGENT_API_KEY", "")
+        self.internal_trigger_secret: str = os.getenv("INTERNAL_TRIGGER_SECRET", "")
+
     def _load_api_config(self) -> APIConfig:
         """Load API configuration from environment"""
         api_key = os.getenv("GOOGLE_API_KEY")

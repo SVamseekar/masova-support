@@ -15,11 +15,12 @@ from typing import Optional
 
 from dotenv import load_dotenv
 import fastapi
-from fastapi import FastAPI, HTTPException, Body
+from fastapi import Depends, FastAPI, HTTPException, Body
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from .agent import send_message_async, _session_service
+from .auth import CallerIdentity, enforce_customer_id_match, require_caller_identity, require_internal_trigger_auth
 from .scheduler.scheduler import scheduler, register_jobs
 
 load_dotenv()
@@ -114,8 +115,13 @@ def health():
 
 
 @app.post("/agent/chat", response_model=ChatResponse)
-async def chat(request: ChatRequest):
+async def chat(
+    request: ChatRequest,
+    identity: CallerIdentity = Depends(require_caller_identity),
+):
     """Send a message to the MaSoVa support agent."""
+    enforce_customer_id_match(identity, request.customerId)
+
     if not request.message or not request.message.strip():
         raise HTTPException(status_code=400, detail="message must not be empty")
 
@@ -142,43 +148,43 @@ async def chat(request: ChatRequest):
 # Agent trigger endpoints (for manual testing / dev)
 # ---------------------------------------------------------------------------
 
-@app.post("/agents/demand-forecast/trigger")
+@app.post("/agents/demand-forecast/trigger", dependencies=[Depends(require_internal_trigger_auth)])
 async def trigger_demand_forecast():
     from .agents.demand_forecasting_agent import run_demand_forecast
     return await run_demand_forecast()
 
 
-@app.post("/agents/inventory-reorder/trigger")
+@app.post("/agents/inventory-reorder/trigger", dependencies=[Depends(require_internal_trigger_auth)])
 async def trigger_inventory_reorder():
     from .agents.inventory_reorder_agent import run_inventory_reorder
     return await run_inventory_reorder()
 
 
-@app.post("/agents/churn-prevention/trigger")
+@app.post("/agents/churn-prevention/trigger", dependencies=[Depends(require_internal_trigger_auth)])
 async def trigger_churn_prevention():
     from .agents.churn_prevention_agent import run_churn_prevention
     return await run_churn_prevention()
 
 
-@app.post("/agents/review-response/trigger")
+@app.post("/agents/review-response/trigger", dependencies=[Depends(require_internal_trigger_auth)])
 async def trigger_review_response(review_data: dict = Body(...)):
     from .agents.review_response_agent import draft_review_response
     return await draft_review_response(review_data)
 
 
-@app.post("/agents/shift-optimisation/trigger")
+@app.post("/agents/shift-optimisation/trigger", dependencies=[Depends(require_internal_trigger_auth)])
 async def trigger_shift_opt():
     from .agents.shift_optimisation_agent import run_shift_optimisation
     return await run_shift_optimisation()
 
 
-@app.post("/agents/kitchen-coach/trigger")
+@app.post("/agents/kitchen-coach/trigger", dependencies=[Depends(require_internal_trigger_auth)])
 async def trigger_kitchen_coach():
     from .agents.kitchen_coach_agent import run_kitchen_coach
     return await run_kitchen_coach()
 
 
-@app.post("/agents/dynamic-pricing/trigger")
+@app.post("/agents/dynamic-pricing/trigger", dependencies=[Depends(require_internal_trigger_auth)])
 async def trigger_dynamic_pricing():
     from .agents.dynamic_pricing_agent import run_dynamic_pricing
     return await run_dynamic_pricing()
