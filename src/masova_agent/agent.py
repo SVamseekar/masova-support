@@ -95,8 +95,17 @@ async def send_message_async(
     message: str,
     user_id: str = "anonymous",
     session_id: str = "default",
+    customer_id: str | None = None,
 ) -> tuple[str, str]:
-    """Returns (reply_text, actual_session_id) so callers can persist turns correctly."""
+    """Returns (reply_text, actual_session_id) so callers can persist turns correctly.
+
+    `customer_id` must be the verified identity established at the HTTP
+    boundary (see `auth.CallerIdentity`, `main.py`) — never a value parsed
+    from chat text. It is written into ADK session state via `state_delta`
+    so that tool functions in `tools/backend_tools.py` can read it back via
+    `tool_context.state.get("customer_id")`, ignoring whatever the LLM may
+    have extracted from the message itself.
+    """
     actual_session_id = await _ensure_session(user_id, session_id)
     runner = Runner(
         agent=root_agent,
@@ -112,6 +121,7 @@ async def send_message_async(
         user_id=user_id,
         session_id=actual_session_id,
         new_message=user_content,
+        state_delta={"customer_id": customer_id},
     ):
         if hasattr(event, "is_final_response") and event.is_final_response():
             if event.content and event.content.parts:

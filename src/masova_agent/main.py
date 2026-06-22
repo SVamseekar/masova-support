@@ -133,6 +133,7 @@ async def chat(
             message=request.message.strip(),
             user_id=user_id,
             session_id=session_id,
+            customer_id=identity.customer_id,
         )
     except Exception as e:
         logger.error("Agent error: %s", e, exc_info=True)

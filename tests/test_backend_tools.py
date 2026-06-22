@@ -36,6 +36,16 @@ def _mock_post(status_code: int, json_body: dict):
     return resp
 
 
+def _tool_context(customer_id):
+    """Minimal stand-in for ADK's ToolContext — only `.state` is touched by
+    backend_tools._session_customer_id(). Real ADK ToolContext construction
+    requires a full InvocationContext, which is unnecessary for these unit
+    tests."""
+    ctx = MagicMock()
+    ctx.state = {"customer_id": customer_id}
+    return ctx
+
+
 # ---------------------------------------------------------------------------
 # get_order_status
 # ---------------------------------------------------------------------------
@@ -50,14 +60,14 @@ class TestGetOrderStatus:
                 "items": [{"quantity": 2, "name": "Chicken Biryani"}],
                 "preparationTime": 15,
             })
-            result = get_order_status("ORD-001")
+            result = get_order_status("ORD-001", _tool_context("CUST-1"))
         assert "ORD-001" in result
         assert "kitchen" in result.lower() or "prepar" in result.lower()
         assert "Chicken Biryani" in result
 
     def test_unknown_order_returns_friendly_message(self):
         from masova_agent.tools.backend_tools import get_order_status
-        from httpx import HTTPStatusError, Request, Response
+        from httpx import HTTPStatusError
         with patch("masova_agent.tools.backend_tools.httpx.get") as mock_get:
             mock_resp = MagicMock()
             mock_resp.raise_for_status.side_effect = HTTPStatusError(
@@ -65,7 +75,7 @@ class TestGetOrderStatus:
             )
             mock_resp.status_code = 404
             mock_get.return_value = mock_resp
-            result = get_order_status("ORD-MISSING")
+            result = get_order_status("ORD-MISSING", _tool_context("CUST-1"))
         assert "couldn't find" in result.lower() or "error" in result.lower()
 
     def test_delivered_order(self):
@@ -76,7 +86,7 @@ class TestGetOrderStatus:
                 "orderNumber": "ORD-002",
                 "items": [],
             })
-            result = get_order_status("ORD-002")
+            result = get_order_status("ORD-002", _tool_context("CUST-1"))
         assert "delivered" in result.lower()
 
     def test_cancelled_order(self):
@@ -87,7 +97,7 @@ class TestGetOrderStatus:
                 "orderNumber": "ORD-003",
                 "items": [],
             })
-            result = get_order_status("ORD-003")
+            result = get_order_status("ORD-003", _tool_context("CUST-1"))
         assert "cancelled" in result.lower()
 
 
@@ -182,19 +192,19 @@ class TestSubmitComplaint:
         from masova_agent.tools.backend_tools import submit_complaint
         with patch("masova_agent.tools.backend_tools.httpx.post") as mock_post:
             mock_post.return_value = _mock_post(201, {"id": "TKT-999"})
-            result = submit_complaint("CUST-1", "ORD-001", "Food was cold and arrived late")
+            result = submit_complaint("CUST-1", "ORD-001", "Food was cold and arrived late", _tool_context("CUST-1"))
         assert "TKT-999" in result or "submitted" in result.lower()
 
     def test_short_description_rejected(self):
         from masova_agent.tools.backend_tools import submit_complaint
-        result = submit_complaint("CUST-1", "ORD-001", "bad")
+        result = submit_complaint("CUST-1", "ORD-001", "bad", _tool_context("CUST-1"))
         assert "more detail" in result.lower() or "provide" in result.lower()
 
     def test_api_failure_gives_fallback_message(self):
         from masova_agent.tools.backend_tools import submit_complaint
         with patch("masova_agent.tools.backend_tools.httpx.post") as mock_post:
             mock_post.side_effect = Exception("timeout")
-            result = submit_complaint("CUST-1", "ORD-001", "The food was completely wrong order")
+            result = submit_complaint("CUST-1", "ORD-001", "The food was completely wrong order", _tool_context("CUST-1"))
         assert "noted" in result.lower() or "support" in result.lower()
 
 
@@ -210,7 +220,7 @@ class TestGetLoyaltyPoints:
                 "loyaltyPoints": 3200,
                 "loyaltyTier": "GOLD",
             })
-            result = get_loyalty_points("CUST-1")
+            result = get_loyalty_points("CUST-1", _tool_context("CUST-1"))
         assert "3200" in result
         assert "GOLD" in result
         assert "PLATINUM" in result  # next tier shown
@@ -222,7 +232,7 @@ class TestGetLoyaltyPoints:
                 "loyaltyPoints": 12000,
                 "loyaltyTier": "PLATINUM",
             })
-            result = get_loyalty_points("CUST-1")
+            result = get_loyalty_points("CUST-1", _tool_context("CUST-1"))
         assert "PLATINUM" in result
         assert "highest" in result.lower()
 
@@ -230,8 +240,13 @@ class TestGetLoyaltyPoints:
         from masova_agent.tools.backend_tools import get_loyalty_points
         with patch("masova_agent.tools.backend_tools.httpx.get") as mock_get:
             mock_get.side_effect = Exception("timeout")
-            result = get_loyalty_points("CUST-1")
+            result = get_loyalty_points("CUST-1", _tool_context("CUST-1"))
         assert "couldn't" in result.lower() or "error" in result.lower()
+
+    def test_no_session_identity_declines_gracefully(self):
+        from masova_agent.tools.backend_tools import get_loyalty_points
+        result = get_loyalty_points("CUST-1", _tool_context(None))
+        assert "log in" in result.lower() or "verify" in result.lower()
 
 
 # ---------------------------------------------------------------------------
@@ -272,19 +287,19 @@ class TestCancelOrder:
              patch("masova_agent.tools.backend_tools.httpx.post") as mock_post:
             mock_get.return_value = _mock_get(200, {"status": "RECEIVED"})
             mock_post.return_value = _mock_post(200, {"status": "CANCELLED"})
-            result = cancel_order("ORD-001", "Changed my mind")
+            result = cancel_order("ORD-001", "Changed my mind", _tool_context("CUST-1"))
         assert "cancelled" in result.lower()
 
     def test_order_already_preparing_cannot_cancel(self):
         from masova_agent.tools.backend_tools import cancel_order
         with patch("masova_agent.tools.backend_tools.httpx.get") as mock_get:
             mock_get.return_value = _mock_get(200, {"status": "PREPARING"})
-            result = cancel_order("ORD-002", "Changed my mind")
+            result = cancel_order("ORD-002", "Changed my mind", _tool_context("CUST-1"))
         assert "cannot be cancelled" in result.lower() or "already" in result.lower()
 
     def test_short_reason_rejected(self):
         from masova_agent.tools.backend_tools import cancel_order
-        result = cancel_order("ORD-001", "no")
+        result = cancel_order("ORD-001", "no", _tool_context("CUST-1"))
         assert "reason" in result.lower()
 
 
@@ -297,17 +312,85 @@ class TestRequestRefund:
         from masova_agent.tools.backend_tools import request_refund
         with patch("masova_agent.tools.backend_tools.httpx.post") as mock_post:
             mock_post.return_value = _mock_post(201, {"refundId": "REF-123"})
-            result = request_refund("ORD-001", "Wrong items delivered")
+            result = request_refund("ORD-001", "Wrong items delivered", _tool_context("CUST-1"))
         assert "REF-123" in result or "refund" in result.lower()
 
     def test_short_reason_rejected(self):
         from masova_agent.tools.backend_tools import request_refund
-        result = request_refund("ORD-001", "bad")
+        result = request_refund("ORD-001", "bad", _tool_context("CUST-1"))
         assert "reason" in result.lower()
 
     def test_api_error_gives_fallback(self):
         from masova_agent.tools.backend_tools import request_refund
         with patch("masova_agent.tools.backend_tools.httpx.post") as mock_post:
             mock_post.side_effect = Exception("timeout")
-            result = request_refund("ORD-001", "Completely wrong order received")
+            result = request_refund("ORD-001", "Completely wrong order received", _tool_context("CUST-1"))
         assert "3" in result or "days" in result.lower() or "logged" in result.lower()
+
+
+# ---------------------------------------------------------------------------
+# Session identity binding — chat-supplied customer_id must never override
+# the verified session identity (Task 2: closes the gap where the LLM could
+# extract an arbitrary customer_id from free chat text and pass it straight
+# through to the backend call). The verified identity arrives via ADK's
+# `ToolContext.state` (populated from `state_delta` at the FastAPI boundary,
+# see `agent.py::send_message_async` / `main.py`), not via any
+# LLM-controlled function argument.
+# ---------------------------------------------------------------------------
+
+class TestSessionIdentityBinding:
+    def test_get_loyalty_points_ignores_llm_supplied_customer_id(self):
+        from masova_agent.tools.backend_tools import get_loyalty_points
+        with patch("masova_agent.tools.backend_tools.httpx.get") as mock_get:
+            mock_get.return_value = _mock_get(200, {"loyaltyPoints": 10, "loyaltyTier": "BRONZE"})
+            get_loyalty_points("attacker-id", _tool_context("real-session-cust"))
+            called_path = mock_get.call_args.args[0]
+        assert "attacker-id" not in called_path
+        assert "real-session-cust" in called_path
+
+    def test_get_order_status_passes_session_customer_id_as_param(self):
+        from masova_agent.tools.backend_tools import get_order_status
+        with patch("masova_agent.tools.backend_tools.httpx.get") as mock_get:
+            mock_get.return_value = _mock_get(200, {"status": "RECEIVED", "orderNumber": "ORD-1"})
+            get_order_status("ORD-1", _tool_context("real-session-cust"))
+            params = mock_get.call_args.kwargs.get("params") or {}
+        assert params.get("customerId") == "real-session-cust"
+
+    def test_submit_complaint_ignores_llm_supplied_customer_id(self):
+        from masova_agent.tools.backend_tools import submit_complaint
+        with patch("masova_agent.tools.backend_tools.httpx.post") as mock_post:
+            mock_post.return_value = _mock_post(201, {"id": "TKT-1"})
+            submit_complaint("attacker-id", "ORD-001", "Food was cold and arrived late", _tool_context("real-session-cust"))
+            body = mock_post.call_args.kwargs.get("json") or {}
+        assert body.get("customerId") == "real-session-cust"
+        assert body.get("customerId") != "attacker-id"
+
+    def test_cancel_order_passes_session_customer_id_as_param(self):
+        from masova_agent.tools.backend_tools import cancel_order
+        with patch("masova_agent.tools.backend_tools.httpx.get") as mock_get, \
+             patch("masova_agent.tools.backend_tools.httpx.post") as mock_post:
+            mock_get.return_value = _mock_get(200, {"status": "RECEIVED"})
+            mock_post.return_value = _mock_post(200, {"status": "CANCELLED"})
+            cancel_order("ORD-001", "Changed my mind", _tool_context("real-session-cust"))
+            post_body = mock_post.call_args.kwargs.get("json") or {}
+        assert post_body.get("customerId") == "real-session-cust"
+
+    def test_request_refund_passes_session_customer_id_as_param(self):
+        from masova_agent.tools.backend_tools import request_refund
+        with patch("masova_agent.tools.backend_tools.httpx.post") as mock_post:
+            mock_post.return_value = _mock_post(201, {"refundId": "REF-1"})
+            request_refund("ORD-001", "Wrong items delivered", _tool_context("real-session-cust"))
+            body = mock_post.call_args.kwargs.get("json") or {}
+        assert body.get("customerId") == "real-session-cust"
+
+    def test_no_session_identity_means_no_customer_id_leaks_through(self):
+        """Anonymous session (no verified identity) — chat-supplied id must
+        still never be trusted, even though there's nothing to substitute it
+        with."""
+        from masova_agent.tools.backend_tools import get_loyalty_points
+        with patch("masova_agent.tools.backend_tools.httpx.get") as mock_get:
+            mock_get.return_value = _mock_get(200, {"loyaltyPoints": 0, "loyaltyTier": "BRONZE"})
+            result = get_loyalty_points("attacker-id", _tool_context(None))
+            called_path = mock_get.call_args.args[0] if mock_get.call_args else ""
+        assert "attacker-id" not in called_path
+        assert "couldn't" in result.lower() or "verify" in result.lower() or "log in" in result.lower()

@@ -5,9 +5,22 @@ Each function is registered as an ADK tool — Gemini calls them when needed.
 
 import logging
 import httpx
+from google.adk.tools import ToolContext
 from ..utils.config import get_config
 
 logger = logging.getLogger(__name__)
+
+
+def _session_customer_id(tool_context: ToolContext) -> str | None:
+    """Read the verified customer id bound to this ADK session.
+
+    `tool_context.state` is populated from `state_delta` passed into
+    `runner.run(...)` at the FastAPI boundary (see `main.py` /
+    `agent.py::send_message_async`), where it is set from the authenticated
+    `CallerIdentity.customer_id` (Task 1's auth.py) — never from anything the
+    LLM extracted from chat text.
+    """
+    return tool_context.state.get("customer_id")
 
 
 def _headers() -> dict:
@@ -54,7 +67,7 @@ def _post(path: str, body: dict) -> dict:
 # Tool functions
 # ---------------------------------------------------------------------------
 
-def get_order_status(order_id: str) -> str:
+def get_order_status(order_id: str, tool_context: ToolContext) -> str:
     """
     Retrieve the current status of a customer order.
 
@@ -64,7 +77,9 @@ def get_order_status(order_id: str) -> str:
     Returns:
         Human-readable order status summary.
     """
-    data = _get(f"/orders/{order_id}")
+    session_customer_id = _session_customer_id(tool_context)
+    params = {"customerId": session_customer_id} if session_customer_id else None
+    data = _get(f"/orders/{order_id}", params=params)
     if "error" in data:
         return f"Sorry, I couldn't find order {order_id}. Please double-check the order ID."
 
@@ -178,7 +193,7 @@ def get_store_hours(store_id: str) -> str:
     return f"{name}{locale_str} is {status_str}.{hours_str} Currency: {currency}."
 
 
-def submit_complaint(customer_id: str, order_id: str, description: str) -> str:
+def submit_complaint(customer_id: str, order_id: str, description: str, tool_context: ToolContext) -> str:
     """
     Submit a customer complaint or support ticket for an order.
 
@@ -193,8 +208,9 @@ def submit_complaint(customer_id: str, order_id: str, description: str) -> str:
     if len(description.strip()) < 10:
         return "Please provide more detail about the issue so we can help you effectively."
 
+    session_customer_id = _session_customer_id(tool_context)
     data = _post("/reviews/complaints", {
-        "customerId": customer_id,
+        "customerId": session_customer_id,
         "orderId": order_id,
         "description": description,
         "type": "COMPLAINT",
@@ -213,7 +229,7 @@ def submit_complaint(customer_id: str, order_id: str, description: str) -> str:
     )
 
 
-def get_loyalty_points(customer_id: str) -> str:
+def get_loyalty_points(customer_id: str, tool_context: ToolContext) -> str:
     """
     Get the loyalty points balance, tier, and next reward threshold for a customer.
 
@@ -223,7 +239,11 @@ def get_loyalty_points(customer_id: str) -> str:
     Returns:
         A string describing the customer's loyalty points balance and tier level.
     """
-    data = _get(f"/customers/{customer_id}")
+    session_customer_id = _session_customer_id(tool_context)
+    if not session_customer_id:
+        return "I couldn't verify your account to look up loyalty points. Please log in and try again."
+
+    data = _get(f"/customers/{session_customer_id}")
     if "error" in data:
         return "I couldn't retrieve your loyalty points right now. Please check the MaSoVa app."
 
@@ -276,7 +296,7 @@ def get_store_wait_time(store_id: str) -> str:
         return f"The kitchen is very busy right now ({active} active orders). Estimated wait: 40–50 minutes."
 
 
-def cancel_order(order_id: str, reason: str) -> str:
+def cancel_order(order_id: str, reason: str, tool_context: ToolContext) -> str:
     """
     Cancel a customer order if it is still in a cancellable state (RECEIVED only).
 
@@ -290,7 +310,9 @@ def cancel_order(order_id: str, reason: str) -> str:
     if len(reason.strip()) < 5:
         return "Please provide a reason for cancellation (at least 5 characters)."
 
-    order_data = _get(f"/orders/{order_id}")
+    session_customer_id = _session_customer_id(tool_context)
+    params = {"customerId": session_customer_id} if session_customer_id else None
+    order_data = _get(f"/orders/{order_id}", params=params)
     if "error" not in order_data:
         current_status = order_data.get("status", "")
         if current_status and current_status not in {"PENDING", "RECEIVED"}:
@@ -300,7 +322,7 @@ def cancel_order(order_id: str, reason: str) -> str:
                 f"I can submit a complaint or refund request instead."
             )
 
-    data = _post(f"/orders/{order_id}/cancel", {"reason": reason})
+    data = _post(f"/orders/{order_id}/cancel", {"reason": reason, "customerId": session_customer_id})
     if "error" in data:
         return f"I wasn't able to cancel order #{order_id} right now. Please contact the restaurant directly."
     return (
@@ -309,7 +331,7 @@ def cancel_order(order_id: str, reason: str) -> str:
     )
 
 
-def request_refund(order_id: str, reason: str) -> str:
+def request_refund(order_id: str, reason: str, tool_context: ToolContext) -> str:
     """
     Request a refund for an order.
 
@@ -323,7 +345,12 @@ def request_refund(order_id: str, reason: str) -> str:
     if len(reason.strip()) < 5:
         return "Please provide a reason for the refund request."
 
-    data = _post("/payments/refund/request", {"orderId": order_id, "reason": reason})
+    session_customer_id = _session_customer_id(tool_context)
+    data = _post("/payments/refund/request", {
+        "orderId": order_id,
+        "reason": reason,
+        "customerId": session_customer_id,
+    })
 
     if "error" in data:
         return (
