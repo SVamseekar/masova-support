@@ -281,14 +281,21 @@ class TestGetStoreWaitTime:
 # ---------------------------------------------------------------------------
 
 class TestCancelOrder:
-    def test_cancellable_order(self):
+    def test_cancellable_order_submits_request_not_direct_cancel(self):
         from masova_agent.tools.backend_tools import cancel_order
         with patch("masova_agent.tools.backend_tools.httpx.get") as mock_get, \
              patch("masova_agent.tools.backend_tools.httpx.post") as mock_post:
             mock_get.return_value = _mock_get(200, {"status": "RECEIVED"})
-            mock_post.return_value = _mock_post(200, {"status": "CANCELLED"})
+            mock_post.return_value = _mock_post(200, {
+                "status": "RECEIVED",
+                "cancellationRequested": True,
+            })
             result = cancel_order("ORD-001", "Changed my mind", _tool_context("CUST-1"))
-        assert "cancelled" in result.lower()
+            called_path = mock_post.call_args.args[0]
+        assert "/cancel-request" in called_path
+        assert "/cancel" not in called_path.replace("/cancel-request", "")
+        assert "manager" in result.lower() or "review" in result.lower()
+        assert "cancelled" not in result.lower() or "not" in result.lower()
 
     def test_order_already_preparing_cannot_cancel(self):
         from masova_agent.tools.backend_tools import cancel_order
@@ -308,11 +315,17 @@ class TestCancelOrder:
 # ---------------------------------------------------------------------------
 
 class TestRequestRefund:
-    def test_valid_refund_request(self):
+    def test_valid_refund_request_targets_pending_endpoint(self):
         from masova_agent.tools.backend_tools import request_refund
         with patch("masova_agent.tools.backend_tools.httpx.post") as mock_post:
-            mock_post.return_value = _mock_post(201, {"refundId": "REF-123"})
+            mock_post.return_value = _mock_post(201, {
+                "refundId": "REF-123",
+                "status": "PENDING_APPROVAL",
+            })
             result = request_refund("ORD-001", "Wrong items delivered", _tool_context("CUST-1"))
+            called_path = mock_post.call_args.args[0]
+        assert "/refund/request" in called_path
+        assert "pending" in result.lower() or "approval" in result.lower() or "manager" in result.lower()
         assert "REF-123" in result or "refund" in result.lower()
 
     def test_short_reason_rejected(self):
@@ -365,15 +378,16 @@ class TestSessionIdentityBinding:
         assert body.get("customerId") == "real-session-cust"
         assert body.get("customerId") != "attacker-id"
 
-    def test_cancel_order_passes_session_customer_id_as_param(self):
+    def test_cancel_order_forwards_session_customer_id_in_headers(self):
         from masova_agent.tools.backend_tools import cancel_order
         with patch("masova_agent.tools.backend_tools.httpx.get") as mock_get, \
              patch("masova_agent.tools.backend_tools.httpx.post") as mock_post:
             mock_get.return_value = _mock_get(200, {"status": "RECEIVED"})
-            mock_post.return_value = _mock_post(200, {"status": "CANCELLED"})
+            mock_post.return_value = _mock_post(200, {"cancellationRequested": True, "status": "RECEIVED"})
             cancel_order("ORD-001", "Changed my mind", _tool_context("real-session-cust"))
-            post_body = mock_post.call_args.kwargs.get("json") or {}
-        assert post_body.get("customerId") == "real-session-cust"
+            headers = mock_post.call_args.kwargs.get("headers") or {}
+        assert headers.get("X-User-Id") == "real-session-cust"
+        assert headers.get("X-Customer-Id") == "real-session-cust"
 
     def test_request_refund_passes_session_customer_id_as_param(self):
         from masova_agent.tools.backend_tools import request_refund
@@ -476,6 +490,15 @@ class TestUserTypeHeader:
             headers = mock_get.call_args.kwargs.get("headers", {})
         assert headers.get("X-User-Type") == "AGENT"
 
+    def test_submit_complaint_records_pending_not_immediate_action(self):
+        from masova_agent.tools.backend_tools import submit_complaint
+        with patch("masova_agent.tools.backend_tools.httpx.post") as mock_post:
+            mock_post.return_value = _mock_post(201, {"id": "TKT-1", "status": "PENDING"})
+            result = submit_complaint("CUST-1", "ORD-001", "Food was cold and arrived late", _tool_context("CUST-1"))
+            called_path = mock_post.call_args.args[0]
+        assert "/reviews/complaints" in called_path
+        assert "manager" in result.lower() or "review" in result.lower()
+
     def test_submit_complaint_sends_agent_header(self):
         """Complaint submission must not claim MANAGER privilege."""
         from masova_agent.tools.backend_tools import submit_complaint
@@ -507,12 +530,12 @@ class TestUserTypeHeader:
         assert headers.get("X-User-Type") == "AGENT"
 
     def test_cancel_order_sends_agent_header(self):
-        """Order cancellation must not claim MANAGER privilege."""
+        """Cancellation request must not claim MANAGER privilege."""
         from masova_agent.tools.backend_tools import cancel_order
         with patch("masova_agent.tools.backend_tools.httpx.get") as mock_get, \
              patch("masova_agent.tools.backend_tools.httpx.post") as mock_post:
             mock_get.return_value = _mock_get(200, {"status": "RECEIVED"})
-            mock_post.return_value = _mock_post(200, {"status": "CANCELLED"})
+            mock_post.return_value = _mock_post(200, {"cancellationRequested": True, "status": "RECEIVED"})
             cancel_order("ORD-001", "Changed my mind", _tool_context("CUST-1"))
             headers = mock_post.call_args.kwargs.get("headers", {})
         assert headers.get("X-User-Type") == "AGENT"

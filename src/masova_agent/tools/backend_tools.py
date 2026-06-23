@@ -41,7 +41,9 @@ def _headers(customer_id: str | None = None) -> dict:
     if token:
         h["Authorization"] = f"Bearer {token}"
     if customer_id:
+        # Forward verified customer identity for backend ownership checks (Task 1/2).
         h["X-Customer-Id"] = customer_id
+        h["X-User-Id"] = customer_id
     return h
 
 
@@ -227,7 +229,7 @@ def get_store_hours(store_id: str) -> str:
 
 def submit_complaint(customer_id: str, order_id: str, description: str, tool_context: ToolContext) -> str:
     """
-    Submit a customer complaint or support ticket for an order.
+    Submit a customer complaint for manager review (does not take immediate action).
 
     Args:
         customer_id: UNUSED / IGNORED. Kept only to avoid changing the LLM-facing
@@ -261,9 +263,15 @@ def submit_complaint(customer_id: str, order_id: str, description: str, tool_con
         )
 
     ticket_ref = data.get("id", data.get("ticketId", f"SUP-{order_id[-6:]}"))
+    status = data.get("status", "")
+    pending_note = (
+        " It is pending manager review and has not been actioned yet."
+        if str(status).upper() == "PENDING" or status == ""
+        else ""
+    )
     return (
-        f"Your complaint has been submitted. Ticket: {ticket_ref}. "
-        f"We'll respond within 24 hours."
+        f"Your complaint has been recorded for manager review. Ticket: {ticket_ref}.{pending_note} "
+        f"We'll respond within 24 hours once it has been reviewed."
     )
 
 
@@ -342,7 +350,7 @@ def get_store_wait_time(store_id: str) -> str:
 
 def cancel_order(order_id: str, reason: str, tool_context: ToolContext) -> str:
     """
-    Cancel a customer order if it is still in a cancellable state (RECEIVED only).
+    Request cancellation of a customer order (requires manager approval; does not cancel immediately).
 
     Args:
         order_id: The unique order identifier.
@@ -366,18 +374,30 @@ def cancel_order(order_id: str, reason: str, tool_context: ToolContext) -> str:
                 f"I can submit a complaint or refund request instead."
             )
 
-    data = _post(f"/orders/{order_id}/cancel", {"reason": reason, "customerId": session_customer_id}, customer_id=session_customer_id)
+    data = _post(
+        f"/orders/{order_id}/cancel-request",
+        {"reason": reason},
+        customer_id=session_customer_id,
+    )
     if "error" in data:
-        return f"I wasn't able to cancel order #{order_id} right now. Please contact the restaurant directly."
+        return (
+            f"I wasn't able to submit a cancellation request for order #{order_id} right now. "
+            f"Please contact the restaurant directly."
+        )
+    if data.get("cancellationRequested") or data.get("status") not in (None, "CANCELLED"):
+        return (
+            f"Your cancellation request for order #{order_id} has been submitted for manager review. "
+            f"Reason: {reason}. The order is still active until a manager approves the cancellation."
+        )
     return (
-        f"Order #{order_id} has been successfully cancelled. Reason: {reason}. "
-        f"A refund will be processed automatically if payment was made."
+        f"Cancellation request recorded for order #{order_id}. Reason: {reason}. "
+        f"A manager will review it shortly."
     )
 
 
 def request_refund(order_id: str, reason: str, tool_context: ToolContext) -> str:
     """
-    Request a refund for an order.
+    Request a refund for an order (pending manager approval; no money moves immediately).
 
     Args:
         order_id: The order ID to refund.
@@ -403,8 +423,13 @@ def request_refund(order_id: str, reason: str, tool_context: ToolContext) -> str
         )
 
     refund_id = data.get("refundId", data.get("id", ""))
+    status = str(data.get("status", "")).upper()
     ref_str = f" (Ref: {refund_id})" if refund_id else ""
+    pending_note = (
+        " It is pending manager approval — no refund has been processed yet."
+        if status in ("PENDING_APPROVAL", "") else ""
+    )
     return (
-        f"Refund requested for order {order_id}{ref_str}. "
-        f"Processing takes 3–5 business days. We'll notify you by email."
+        f"Refund request submitted for order {order_id}{ref_str}.{pending_note} "
+        f"If approved, processing takes 3–5 business days and we'll notify you by email."
     )
