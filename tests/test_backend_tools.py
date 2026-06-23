@@ -78,6 +78,20 @@ class TestGetOrderStatus:
             result = get_order_status("ORD-MISSING", _tool_context("CUST-1"))
         assert "couldn't find" in result.lower() or "error" in result.lower()
 
+    def test_forbidden_order_returns_user_friendly_message_not_raw_error(self):
+        from masova_agent.tools.backend_tools import get_order_status
+        from httpx import HTTPStatusError
+        with patch("masova_agent.tools.backend_tools.httpx.get") as mock_get:
+            mock_resp = MagicMock()
+            mock_resp.raise_for_status.side_effect = HTTPStatusError(
+                "403", request=MagicMock(), response=MagicMock(status_code=403)
+            )
+            mock_resp.status_code = 403
+            mock_get.return_value = mock_resp
+            result = get_order_status("ORD-OTHER", _tool_context("CUST-1"))
+        assert "not able" in result.lower() or "permission" in result.lower()
+        assert "HTTP 403" not in result
+
     def test_delivered_order(self):
         from masova_agent.tools.backend_tools import get_order_status
         with patch("masova_agent.tools.backend_tools.httpx.get") as mock_get:

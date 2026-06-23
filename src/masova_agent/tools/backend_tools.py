@@ -51,6 +51,20 @@ def _base() -> str:
     return get_config().backend_url + "/api"
 
 
+def _forbidden_user_message() -> str:
+    """User-facing message for backend 403 — never leak raw API bodies (Task 7)."""
+    return (
+        "I'm not able to do that — this order doesn't belong to your account, "
+        "or you don't have permission for that action."
+    )
+
+
+def _map_http_error(status_code: int) -> dict:
+    if status_code == 403:
+        return {"error": "forbidden", "message": _forbidden_user_message()}
+    return {"error": f"HTTP {status_code}"}
+
+
 def _get(path: str, params: dict | None = None, customer_id: str | None = None) -> dict:
     """Make an authenticated GET request to the backend.
 
@@ -68,7 +82,7 @@ def _get(path: str, params: dict | None = None, customer_id: str | None = None) 
         return r.json()
     except httpx.HTTPStatusError as e:
         logger.warning("GET %s → %s", path, e.response.status_code)
-        return {"error": f"HTTP {e.response.status_code}"}
+        return _map_http_error(e.response.status_code)
     except Exception as e:
         logger.error("GET %s failed: %s", path, e)
         return {"error": str(e)}
@@ -91,7 +105,7 @@ def _post(path: str, body: dict, customer_id: str | None = None) -> dict:
         return r.json()
     except httpx.HTTPStatusError as e:
         logger.warning("POST %s → %s", path, e.response.status_code)
-        return {"error": f"HTTP {e.response.status_code}"}
+        return _map_http_error(e.response.status_code)
     except Exception as e:
         logger.error("POST %s failed: %s", path, e)
         return {"error": str(e)}
@@ -114,6 +128,8 @@ def get_order_status(order_id: str, tool_context: ToolContext) -> str:
     session_customer_id = _session_customer_id(tool_context)
     params = {"customerId": session_customer_id} if session_customer_id else None
     data = _get(f"/orders/{order_id}", params=params, customer_id=session_customer_id)
+    if data.get("error") == "forbidden":
+        return data.get("message", _forbidden_user_message())
     if "error" in data:
         return f"Sorry, I couldn't find order {order_id}. Please double-check the order ID."
 
@@ -379,6 +395,8 @@ def cancel_order(order_id: str, reason: str, tool_context: ToolContext) -> str:
         {"reason": reason},
         customer_id=session_customer_id,
     )
+    if data.get("error") == "forbidden":
+        return data.get("message", _forbidden_user_message())
     if "error" in data:
         return (
             f"I wasn't able to submit a cancellation request for order #{order_id} right now. "
