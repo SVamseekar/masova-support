@@ -15,11 +15,12 @@ from typing import Optional
 
 from dotenv import load_dotenv
 import fastapi
-from fastapi import FastAPI, HTTPException, Body
+from fastapi import Depends, FastAPI, HTTPException, Body
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from .agent import send_message_async, _session_service
+from .auth import AgentIdentity, bind_identity, reset_identity, verify_customer_jwt, verify_trigger_api_key
 from .scheduler.scheduler import scheduler, register_jobs
 
 load_dotenv()
@@ -100,7 +101,6 @@ app.add_middleware(
 class ChatRequest(BaseModel):
     message: str
     sessionId: Optional[str] = None
-    customerId: Optional[str] = None
 
 
 class ChatResponse(BaseModel):
@@ -114,23 +114,31 @@ def health():
 
 
 @app.post("/agent/chat", response_model=ChatResponse)
-async def chat(request: ChatRequest):
-    """Send a message to the MaSoVa support agent."""
+async def chat(request: ChatRequest, identity: AgentIdentity = Depends(verify_customer_jwt)):
+    """Send a message to the MaSoVa support agent, authenticated as the caller's verified identity."""
     if not request.message or not request.message.strip():
         raise HTTPException(status_code=400, detail="message must not be empty")
 
     session_id = request.sessionId or str(uuid.uuid4())
-    user_id = request.customerId or f"anon-{session_id}"
+    user_id = identity.user_id
 
+    # Bind the verified identity for the duration of this request so tool
+    # functions (submit_complaint, cancel_order, etc.) act on the real
+    # authenticated customer rather than any LLM-parsed argument.
+    token = bind_identity(identity)
     try:
         reply, actual_session_id = await send_message_async(
             message=request.message.strip(),
             user_id=user_id,
             session_id=session_id,
         )
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error("Agent error: %s", e, exc_info=True)
         raise HTTPException(status_code=500, detail="Agent unavailable. Please try again.")
+    finally:
+        reset_identity(token)
 
     await _session_service.append_turn(actual_session_id, "user", request.message.strip())
     await _session_service.append_turn(actual_session_id, "assistant", reply)
@@ -139,46 +147,48 @@ async def chat(request: ChatRequest):
 
 
 # ---------------------------------------------------------------------------
-# Agent trigger endpoints (for manual testing / dev)
+# Agent trigger endpoints (internal/ops — scheduler or manager triggered).
+# Gated by a static service API key, not a customer JWT: there is no single
+# customer identity to bind these to.
 # ---------------------------------------------------------------------------
 
-@app.post("/agents/demand-forecast/trigger")
+@app.post("/agents/demand-forecast/trigger", dependencies=[Depends(verify_trigger_api_key)])
 async def trigger_demand_forecast():
     from .agents.demand_forecasting_agent import run_demand_forecast
     return await run_demand_forecast()
 
 
-@app.post("/agents/inventory-reorder/trigger")
+@app.post("/agents/inventory-reorder/trigger", dependencies=[Depends(verify_trigger_api_key)])
 async def trigger_inventory_reorder():
     from .agents.inventory_reorder_agent import run_inventory_reorder
     return await run_inventory_reorder()
 
 
-@app.post("/agents/churn-prevention/trigger")
+@app.post("/agents/churn-prevention/trigger", dependencies=[Depends(verify_trigger_api_key)])
 async def trigger_churn_prevention():
     from .agents.churn_prevention_agent import run_churn_prevention
     return await run_churn_prevention()
 
 
-@app.post("/agents/review-response/trigger")
+@app.post("/agents/review-response/trigger", dependencies=[Depends(verify_trigger_api_key)])
 async def trigger_review_response(review_data: dict = Body(...)):
     from .agents.review_response_agent import draft_review_response
     return await draft_review_response(review_data)
 
 
-@app.post("/agents/shift-optimisation/trigger")
+@app.post("/agents/shift-optimisation/trigger", dependencies=[Depends(verify_trigger_api_key)])
 async def trigger_shift_opt():
     from .agents.shift_optimisation_agent import run_shift_optimisation
     return await run_shift_optimisation()
 
 
-@app.post("/agents/kitchen-coach/trigger")
+@app.post("/agents/kitchen-coach/trigger", dependencies=[Depends(verify_trigger_api_key)])
 async def trigger_kitchen_coach():
     from .agents.kitchen_coach_agent import run_kitchen_coach
     return await run_kitchen_coach()
 
 
-@app.post("/agents/dynamic-pricing/trigger")
+@app.post("/agents/dynamic-pricing/trigger", dependencies=[Depends(verify_trigger_api_key)])
 async def trigger_dynamic_pricing():
     from .agents.dynamic_pricing_agent import run_dynamic_pricing
     return await run_dynamic_pricing()

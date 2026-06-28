@@ -5,19 +5,28 @@ Each function is registered as an ADK tool — Gemini calls them when needed.
 
 import logging
 import httpx
+from ..auth import get_current_identity
 from ..utils.config import get_config
 
 logger = logging.getLogger(__name__)
 
 
 def _headers() -> dict:
-    """Build auth headers from current config."""
-    config = get_config()
-    token = config.agent_token
-    h = {"Content-Type": "application/json", "X-User-Type": "MANAGER"}
-    if token:
-        h["Authorization"] = f"Bearer {token}"
-    return h
+    """
+    Build auth headers from the authenticated caller's identity.
+
+    The agent always acts on-behalf-of the customer who is talking to it —
+    never as a privileged role like MANAGER. Forwarding the customer's own
+    verified JWT means the gateway's JwtAuthenticationFilter derives
+    X-User-Id/X-User-Type from real claims, so every backend call is bound
+    to the same identity checks (ownership, ACLs) a direct customer request
+    would get.
+    """
+    identity = get_current_identity()
+    return {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {identity.raw_token}",
+    }
 
 
 def _base() -> str:
@@ -178,12 +187,12 @@ def get_store_hours(store_id: str) -> str:
     return f"{name}{locale_str} is {status_str}.{hours_str} Currency: {currency}."
 
 
-def submit_complaint(customer_id: str, order_id: str, description: str) -> str:
+def submit_complaint(order_id: str, description: str) -> str:
     """
-    Submit a customer complaint or support ticket for an order.
+    Submit a complaint or support ticket for an order, on behalf of the
+    customer currently chatting with the agent.
 
     Args:
-        customer_id: The customer's ID.
         order_id: The order ID the complaint relates to.
         description: Clear description of the issue (minimum 10 characters).
 
@@ -193,8 +202,9 @@ def submit_complaint(customer_id: str, order_id: str, description: str) -> str:
     if len(description.strip()) < 10:
         return "Please provide more detail about the issue so we can help you effectively."
 
+    identity = get_current_identity()
     data = _post("/reviews/complaints", {
-        "customerId": customer_id,
+        "customerId": identity.user_id,
         "orderId": order_id,
         "description": description,
         "type": "COMPLAINT",
@@ -213,17 +223,16 @@ def submit_complaint(customer_id: str, order_id: str, description: str) -> str:
     )
 
 
-def get_loyalty_points(customer_id: str) -> str:
+def get_loyalty_points() -> str:
     """
-    Get the loyalty points balance, tier, and next reward threshold for a customer.
-
-    Args:
-        customer_id: The customer's unique identifier (MongoDB ID).
+    Get the loyalty points balance, tier, and next reward threshold for the
+    customer currently chatting with the agent.
 
     Returns:
         A string describing the customer's loyalty points balance and tier level.
     """
-    data = _get(f"/customers/{customer_id}")
+    identity = get_current_identity()
+    data = _get(f"/customers/{identity.user_id}")
     if "error" in data:
         return "I couldn't retrieve your loyalty points right now. Please check the MaSoVa app."
 
@@ -278,7 +287,9 @@ def get_store_wait_time(store_id: str) -> str:
 
 def cancel_order(order_id: str, reason: str) -> str:
     """
-    Cancel a customer order if it is still in a cancellable state (RECEIVED only).
+    Request cancellation of a customer order if it is still in a cancellable
+    state (RECEIVED only). This submits a cancellation request for manager
+    approval — the agent never cancels an order immediately.
 
     Args:
         order_id: The unique order identifier.
@@ -300,12 +311,14 @@ def cancel_order(order_id: str, reason: str) -> str:
                 f"I can submit a complaint or refund request instead."
             )
 
-    data = _post(f"/orders/{order_id}/cancel", {"reason": reason})
+    # Always go through the approval-gated endpoint — the agent requests
+    # cancellation on the customer's behalf, a manager approves or rejects it.
+    data = _post(f"/orders/{order_id}/cancel-request", {"reason": reason})
     if "error" in data:
-        return f"I wasn't able to cancel order #{order_id} right now. Please contact the restaurant directly."
+        return f"I wasn't able to submit a cancellation request for order #{order_id} right now. Please contact the restaurant directly."
     return (
-        f"Order #{order_id} has been successfully cancelled. Reason: {reason}. "
-        f"A refund will be processed automatically if payment was made."
+        f"Your cancellation request for order #{order_id} has been submitted (reason: {reason}) "
+        f"and is pending manager approval. We'll notify you once it's reviewed."
     )
 
 

@@ -10,6 +10,18 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 import pytest
 from unittest.mock import patch, MagicMock
 
+from masova_agent.auth import AgentIdentity, bind_identity, reset_identity
+
+
+@pytest.fixture(autouse=True)
+def _bound_identity():
+    """All backend_tools calls require an authenticated identity bound via auth.py."""
+    token = bind_identity(AgentIdentity(
+        user_id="CUST-1", user_type="CUSTOMER", store_id=None, raw_token="test-jwt",
+    ))
+    yield
+    reset_identity(token)
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -182,19 +194,28 @@ class TestSubmitComplaint:
         from masova_agent.tools.backend_tools import submit_complaint
         with patch("masova_agent.tools.backend_tools.httpx.post") as mock_post:
             mock_post.return_value = _mock_post(201, {"id": "TKT-999"})
-            result = submit_complaint("CUST-1", "ORD-001", "Food was cold and arrived late")
+            result = submit_complaint("ORD-001", "Food was cold and arrived late")
         assert "TKT-999" in result or "submitted" in result.lower()
+
+    def test_uses_authenticated_customer_id_not_arg(self):
+        """submit_complaint must bind to the verified identity, not any caller-supplied id."""
+        from masova_agent.tools.backend_tools import submit_complaint
+        with patch("masova_agent.tools.backend_tools.httpx.post") as mock_post:
+            mock_post.return_value = _mock_post(201, {"id": "TKT-999"})
+            submit_complaint("ORD-001", "Food was cold and arrived late")
+            body = mock_post.call_args.kwargs.get("json", {})
+            assert body.get("customerId") == "CUST-1"
 
     def test_short_description_rejected(self):
         from masova_agent.tools.backend_tools import submit_complaint
-        result = submit_complaint("CUST-1", "ORD-001", "bad")
+        result = submit_complaint("ORD-001", "bad")
         assert "more detail" in result.lower() or "provide" in result.lower()
 
     def test_api_failure_gives_fallback_message(self):
         from masova_agent.tools.backend_tools import submit_complaint
         with patch("masova_agent.tools.backend_tools.httpx.post") as mock_post:
             mock_post.side_effect = Exception("timeout")
-            result = submit_complaint("CUST-1", "ORD-001", "The food was completely wrong order")
+            result = submit_complaint("ORD-001", "The food was completely wrong order")
         assert "noted" in result.lower() or "support" in result.lower()
 
 
@@ -210,7 +231,7 @@ class TestGetLoyaltyPoints:
                 "loyaltyPoints": 3200,
                 "loyaltyTier": "GOLD",
             })
-            result = get_loyalty_points("CUST-1")
+            result = get_loyalty_points()
         assert "3200" in result
         assert "GOLD" in result
         assert "PLATINUM" in result  # next tier shown
@@ -222,7 +243,7 @@ class TestGetLoyaltyPoints:
                 "loyaltyPoints": 12000,
                 "loyaltyTier": "PLATINUM",
             })
-            result = get_loyalty_points("CUST-1")
+            result = get_loyalty_points()
         assert "PLATINUM" in result
         assert "highest" in result.lower()
 
@@ -230,8 +251,16 @@ class TestGetLoyaltyPoints:
         from masova_agent.tools.backend_tools import get_loyalty_points
         with patch("masova_agent.tools.backend_tools.httpx.get") as mock_get:
             mock_get.side_effect = Exception("timeout")
-            result = get_loyalty_points("CUST-1")
+            result = get_loyalty_points()
         assert "couldn't" in result.lower() or "error" in result.lower()
+
+    def test_uses_authenticated_customer_id(self):
+        from masova_agent.tools.backend_tools import get_loyalty_points
+        with patch("masova_agent.tools.backend_tools.httpx.get") as mock_get:
+            mock_get.return_value = _mock_get(200, {"loyaltyPoints": 100, "loyaltyTier": "BRONZE"})
+            get_loyalty_points()
+            called_url = mock_get.call_args.args[0] if mock_get.call_args.args else mock_get.call_args.kwargs.get("url", "")
+            assert "CUST-1" in called_url
 
 
 # ---------------------------------------------------------------------------
@@ -266,14 +295,17 @@ class TestGetStoreWaitTime:
 # ---------------------------------------------------------------------------
 
 class TestCancelOrder:
-    def test_cancellable_order(self):
+    def test_cancellable_order_submits_approval_request(self):
         from masova_agent.tools.backend_tools import cancel_order
         with patch("masova_agent.tools.backend_tools.httpx.get") as mock_get, \
              patch("masova_agent.tools.backend_tools.httpx.post") as mock_post:
             mock_get.return_value = _mock_get(200, {"status": "RECEIVED"})
-            mock_post.return_value = _mock_post(200, {"status": "CANCELLED"})
+            mock_post.return_value = _mock_post(200, {"status": "PENDING_APPROVAL"})
             result = cancel_order("ORD-001", "Changed my mind")
-        assert "cancelled" in result.lower()
+        # Must go through the approval-gated endpoint, not immediate cancellation
+        post_url = mock_post.call_args.args[0] if mock_post.call_args.args else mock_post.call_args.kwargs.get("url", "")
+        assert "cancel-request" in post_url
+        assert "pending" in result.lower() and "approval" in result.lower()
 
     def test_order_already_preparing_cannot_cancel(self):
         from masova_agent.tools.backend_tools import cancel_order
