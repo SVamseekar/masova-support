@@ -38,7 +38,7 @@ def _managers():
 
 
 def _mock_config():
-    return MagicMock(backend_url="http://test", agent_token="tok", google_api_key="key")
+    return MagicMock(backend_url="http://test", agent_token="tok", llm_api_key="key", llm_model="test/model")
 
 
 def _async_client_ctx(client):
@@ -148,13 +148,13 @@ class TestChurnPreventionAgent:
         from masova_agent.agents.churn_prevention_agent import run_churn_prevention
 
         churned = [{"id": "cust-1", "lastOrderDate": "2026-01-01T00:00:00Z",
-                    "totalOrders": 5}]
+                    "orderStats": {"totalOrders": 5}}]
 
         client = AsyncMock()
         client.get = AsyncMock(side_effect=[
             _resp(200, _stores()),
             _resp(200, {"content": churned}),
-            _resp(200, []),                           # top items
+            _resp(200, {"topProducts": []}),          # top items
             _resp(200, {"content": _managers()}),
         ])
         client.post = AsyncMock(return_value=_resp(201, {"id": "CMP-1"}))
@@ -238,14 +238,14 @@ class TestShiftOptimisationAgent:
     async def test_drafts_shifts_for_store(self):
         from masova_agent.agents.shift_optimisation_agent import run_shift_optimisation
 
-        staff = [{"id": "emp-1", "type": "KITCHEN_STAFF"},
-                 {"id": "emp-2", "type": "CASHIER"}]
+        staff = [{"id": "emp-1", "type": "STAFF"},
+                 {"id": "emp-2", "type": "DRIVER"}]
 
         client = AsyncMock()
         client.get = AsyncMock(side_effect=[
             _resp(200, _stores()),
             _resp(200, {"content": staff}),
-            _resp(200, {}),                           # forecast
+            _resp(200, {"itemForecasts": []}),        # forecast
             _resp(200, {"content": _managers()}),
         ])
         client.post = AsyncMock(return_value=_resp(201, {}))
@@ -275,14 +275,14 @@ class TestShiftOptimisationAgent:
     def test_build_draft_shifts_produces_21_slots_minimum(self):
         from masova_agent.agents.shift_optimisation_agent import _build_draft_shifts
 
-        staff = [{"id": "emp-1", "type": "KITCHEN_STAFF"},
-                 {"id": "emp-2", "type": "CASHIER"}]
+        staff = [{"id": "emp-1", "type": "STAFF"},
+                 {"id": "emp-2", "type": "DRIVER"}]
         week_start = datetime(2026, 6, 1)
         shifts = _build_draft_shifts("store-1", staff, {}, week_start)
 
         # 7 days × 3 slots × 1 staff minimum (empty forecast = no high-demand)
         assert len(shifts) == 21
-        assert all(s["status"] == "DRAFT" for s in shifts)
+        assert all(s["status"] == "PENDING_APPROVAL" for s in shifts)
         assert all(s["storeId"] == "store-1" for s in shifts)
 
 
@@ -352,7 +352,7 @@ class TestDynamicPricingAgent:
             _resp(200, _stores()),
             _resp(200, {"totalElements": 20}),    # active orders — overloaded
             _resp(200, {"totalElements": 5}),     # recent 30min
-            _resp(200, {"topItems": top_items}),  # top items
+            _resp(200, {"topProducts": [{"itemId": i["id"], "itemName": i["name"]} for i in top_items]}),  # top items
             _resp(200, {"content": _managers()}),
         ])
         client.post = AsyncMock(return_value=_resp(201, {}))
@@ -385,7 +385,7 @@ class TestDynamicPricingAgent:
             _resp(200, {"totalElements": 2}),      # active — low
             _resp(200, {"totalElements": 1}),      # recent 30min — low
             _resp(200, {"content": slow_items}),   # menu items (all items)
-            _resp(200, {"topItems": []}),           # analytics/products (no top items → all are slow)
+            _resp(200, {"topProducts": []}),        # analytics/products (no top items → all are slow)
             _resp(200, {"content": _managers()}),
         ])
         client.post = AsyncMock(return_value=_resp(201, {}))

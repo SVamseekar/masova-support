@@ -146,13 +146,16 @@ async def _get_top_items(
 ) -> List[Dict]:
     """Top selling items by volume today."""
     res = await client.get(
-        f"{backend_url}/api/analytics/products?storeId={store_id}",
+        f"{backend_url}/api/analytics?type=top-products&storeId={store_id}",
         headers=headers,
     )
     if res.status_code != 200:
         return []
     raw = res.json()
-    items = raw.get("topItems") or raw.get("items") or (raw if isinstance(raw, list) else [])
+    items = [
+        {"id": p.get("itemId"), "name": p.get("itemName")}
+        for p in raw.get("topProducts", [])
+    ]
     return items[:limit]
 
 
@@ -160,10 +163,8 @@ async def _get_slow_items(
     client, backend_url, headers, store_id: str, limit: int
 ) -> List[Dict]:
     """Items with low order volume today — candidates for a discount nudge."""
-    res = await client.get(
-        f"{backend_url}/api/menu?storeId={store_id}&available=true",
-        headers=headers,
-    )
+    menu_headers = {**headers, "X-Selected-Store-Id": store_id}
+    res = await client.get(f"{backend_url}/api/menu", headers=menu_headers)
     if res.status_code != 200:
         return []
     from . import _unwrap
@@ -219,7 +220,8 @@ async def _notify_managers(
             f"{backend_url}/api/notifications",
             json={
                 "userId": manager["id"],
-                "type": "DYNAMIC_PRICING_SUGGESTION",
+                "type": "SYSTEM_ALERT",
+                "channel": "IN_APP",
                 "title": "Price Adjustment Suggestion",
                 "message": message,
                 "priority": priority,

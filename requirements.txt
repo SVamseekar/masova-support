@@ -9,6 +9,7 @@ google-genai>=1.63.0
 httpx>=0.28.1
 python-dotenv>=1.2.1
 pyjwt>=2.10.1
+litellm>=1.90.1
 
 # Google Cloud Dependencies (installed automatically by google-adk)
 google-api-core>=2.29.0

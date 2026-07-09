@@ -103,33 +103,18 @@ async def _get_today_metrics(
     client, backend_url, headers, store_id: str
 ) -> Dict[str, Any] | None:
     """
-    Fetch today's order analytics for a store.
+    Fetch today's order metrics for a store by counting today's orders.
     Returns a normalised dict or None if unavailable.
     """
-    # Primary: analytics endpoint
-    res = await client.get(
-        f"{backend_url}/api/analytics/orders?storeId={store_id}&period=today",
-        headers=headers,
-    )
-    if res.status_code == 200:
-        raw = res.json()
-        return {
-            "ticket_count": raw.get("totalOrders", raw.get("ticketCount", 0)),
-            "avg_prep_minutes": raw.get("avgPrepTimeMinutes", raw.get("avgPrepTime", 0)),
-            "completed": raw.get("completedOrders", raw.get("completed", 0)),
-            "cancelled": raw.get("cancelledOrders", raw.get("cancelled", 0)),
-        }
-
-    # Fallback: count today's orders from order list
     today_start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
-    res2 = await client.get(
+    res = await client.get(
         f"{backend_url}/api/orders?storeId={store_id}&from={today_start.isoformat()}",
         headers=headers,
     )
-    if res2.status_code != 200:
+    if res.status_code != 200:
         return None
 
-    orders = res2.json()
+    orders = res.json()
     order_list = orders.get("content") or (orders if isinstance(orders, list) else [])
     completed = [o for o in order_list if o.get("status") in ("DELIVERED", "COMPLETED", "SERVED")]
     cancelled = [o for o in order_list if o.get("status") == "CANCELLED"]
@@ -194,7 +179,8 @@ async def _notify_managers(
             f"{backend_url}/api/notifications",
             json={
                 "userId": manager["id"],
-                "type": "KITCHEN_BRIEF",
+                "type": "KITCHEN_ALERT",
+                "channel": "IN_APP",
                 "title": "Nightly Kitchen Performance Brief",
                 "message": message,
                 "priority": "LOW",

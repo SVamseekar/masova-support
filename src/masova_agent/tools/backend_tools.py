@@ -89,11 +89,11 @@ def get_order_status(order_id: str) -> str:
     customer_str = f" for {customer}" if customer else ""
 
     status_messages = {
-        "PENDING": "has been received and is pending confirmation",
         "RECEIVED": "has been confirmed and will be prepared shortly",
         "PREPARING": "is being prepared by the kitchen",
         "OVEN": "is in the oven",
         "BAKED": "is ready and waiting for dispatch",
+        "READY": "is ready for pickup or dispatch",
         "DISPATCHED": "is out for delivery",
         "OUT_FOR_DELIVERY": "is out for delivery",
         "DELIVERED": "has been delivered",
@@ -122,7 +122,18 @@ def get_menu_items(store_id: str, category: str = "") -> str:
     Returns:
         Formatted list of menu items with prices.
     """
-    data = _get("/menu", params={"storeId": store_id, "available": "true"})
+    headers = _headers()
+    headers["X-Selected-Store-Id"] = store_id
+    try:
+        r = httpx.get(f"{_base()}/menu", headers=headers, timeout=8.0)
+        r.raise_for_status()
+        data = r.json()
+    except httpx.HTTPStatusError as e:
+        logger.warning("GET /menu → %s", e.response.status_code)
+        data = {"error": f"HTTP {e.response.status_code}"}
+    except Exception as e:
+        logger.error("GET /menu failed: %s", e)
+        data = {"error": str(e)}
     if "error" in data:
         return "Sorry, I couldn't fetch the menu right now. Please try again shortly."
 
@@ -145,7 +156,7 @@ def get_menu_items(store_id: str, category: str = "") -> str:
     lines = []
     for item in items[:12]:
         name = item.get("name", "Unknown")
-        price = item.get("discountedPrice") or item.get("basePrice", 0)
+        price = item.get("basePrice", 0)
         price_eur = price / 100 if price > 100 else price
         desc = item.get("description", "")
         spice = item.get("spiceLevel", "")
@@ -173,14 +184,18 @@ def get_store_hours(store_id: str) -> str:
     if "error" in data:
         return "Sorry, I couldn't retrieve store information right now."
 
+    import datetime as _dt
+
     name = data.get("name", f"Store {store_id}")
     status = data.get("status", "UNKNOWN")
-    config = data.get("operatingConfig", {})
-    open_time = config.get("openingTime", "N/A")
-    close_time = config.get("closingTime", "N/A")
-    is_active = status == "ACTIVE"
-    status_str = "currently ACTIVE" if is_active else f"currently {status}"
-    hours_str = f"\nHours: {open_time} – {close_time}" if open_time != "N/A" else ""
+    today_name = _dt.datetime.now().strftime("%A").upper()
+    today_slot = data.get("operatingHours", {}).get("weeklySchedule", {}).get(today_name, {})
+    open_time = today_slot.get("startTime", "N/A")
+    close_time = today_slot.get("endTime", "N/A")
+    is_open_today = today_slot.get("isOpen", False)
+    is_active = status == "ACTIVE" and is_open_today
+    status_str = "currently OPEN" if is_active else f"currently {status if status != 'ACTIVE' else 'CLOSED'}"
+    hours_str = f"\nToday's hours: {open_time} – {close_time}" if open_time != "N/A" else ""
     currency = data.get("currency", "EUR")
     locale = data.get("locale", "")
     locale_str = f" ({locale})" if locale else ""
@@ -236,8 +251,9 @@ def get_loyalty_points() -> str:
     if "error" in data:
         return "I couldn't retrieve your loyalty points right now. Please check the MaSoVa app."
 
-    points = data.get("loyaltyPoints") or data.get("points", 0) or 0
-    tier = data.get("loyaltyTier") or data.get("tier", "BRONZE")
+    loyalty_info = data.get("loyaltyInfo", {})
+    points = loyalty_info.get("totalPoints", 0) or 0
+    tier = loyalty_info.get("tier", "BRONZE")
     name = data.get("name", "")
     name_str = f"{name}, you have" if name else "You have"
 
@@ -250,7 +266,7 @@ def get_loyalty_points() -> str:
     else:
         next_info = " You're at the highest tier — PLATINUM!"
 
-    total_orders = data.get("totalOrders", "")
+    total_orders = data.get("orderStats", {}).get("totalOrders", "")
     orders_str = f" ({total_orders} orders)" if total_orders else ""
     return f"{name_str} {points} loyalty points and are a {tier} member{orders_str}.{next_info}"
 
@@ -265,15 +281,12 @@ def get_store_wait_time(store_id: str) -> str:
     Returns:
         A string describing the estimated wait time for new orders.
     """
-    data = _get("/orders", params={
-        "storeId": store_id,
-        "status": "RECEIVED,PREPARING,OVEN",
-        "size": 1,
-    })
-    if "error" in data:
-        return "I couldn't check the current wait time. Please call the store directly."
-
-    active = data.get("totalElements", 0) if isinstance(data, dict) else len(data)
+    active = 0
+    for status in ("RECEIVED", "PREPARING", "OVEN"):
+        data = _get("/orders", params={"storeId": store_id, "status": status})
+        if "error" in data:
+            return "I couldn't check the current wait time. Please call the store directly."
+        active += len(data) if isinstance(data, list) else len(data.get("content", []))
 
     if active == 0:
         return "Great news — the kitchen is currently free. Expect very fast service right now!"
@@ -304,10 +317,10 @@ def cancel_order(order_id: str, reason: str) -> str:
     order_data = _get(f"/orders/{order_id}")
     if "error" not in order_data:
         current_status = order_data.get("status", "")
-        if current_status and current_status not in {"PENDING", "RECEIVED"}:
+        if current_status and current_status != "RECEIVED":
             return (
                 f"Sorry, order #{order_id} cannot be cancelled — it is already {current_status}. "
-                f"Orders can only be cancelled when PENDING or RECEIVED. "
+                f"Orders can only be cancelled while still RECEIVED. "
                 f"I can submit a complaint or refund request instead."
             )
 
@@ -336,7 +349,26 @@ def request_refund(order_id: str, reason: str) -> str:
     if len(reason.strip()) < 5:
         return "Please provide a reason for the refund request."
 
-    data = _post("/payments/refund/request", {"orderId": order_id, "reason": reason})
+    order = _get(f"/orders/{order_id}")
+    if "error" in order:
+        return f"Sorry, I couldn't find order {order_id} to process a refund."
+
+    transaction_id = order.get("paymentTransactionId")
+    amount = order.get("total")
+    if not transaction_id or not amount:
+        return (
+            "I couldn't find a completed payment for this order to refund. "
+            "Please contact support directly for assistance."
+        )
+
+    identity = get_current_identity()
+    data = _post("/payments/refund/request", {
+        "transactionId": transaction_id,
+        "amount": amount,
+        "type": "FULL",
+        "reason": reason,
+        "initiatedBy": identity.user_id,
+    })
 
     if "error" in data:
         return (

@@ -3,7 +3,7 @@ Agent 5: Smart Review Response
 Trigger: RabbitMQ event on new review with rating <= 3
 Input: review text + order details + item names + complaint keywords
 Output: draft personalised manager response pushed to notification feed
-Uses LLM (Gemini 2.0 Flash Lite) — personalised, not a template
+Uses an LLM for a personalised response, not a template
 """
 import httpx
 import logging
@@ -63,7 +63,7 @@ async def draft_review_response(review_data: Dict[str, Any]) -> Dict[str, Any]:
                 order = order_res.json()
                 items_str = ", ".join(i.get("name", "?") for i in order.get("items", []))
 
-        # Generate response using Gemini
+        # Generate response using the configured LLM
         keywords = _extract_keywords(review_text)
         prompt = DRAFT_RESPONSE_PROMPT.format(
             review_text=review_text,
@@ -73,16 +73,16 @@ async def draft_review_response(review_data: Dict[str, Any]) -> Dict[str, Any]:
         )
 
         try:
-            from google.genai import Client as GenAIClient
+            import litellm
 
-            genai_client = GenAIClient(api_key=config.google_api_key)
-            response = genai_client.models.generate_content(
-                model="gemini-2.5-flash-lite-preview-06-17",
-                contents=prompt,
+            response = await litellm.acompletion(
+                model=config.llm_model,
+                api_key=config.llm_api_key,
+                messages=[{"role": "user", "content": prompt}],
             )
-            draft_response_text = response.text.strip()
+            draft_response_text = response.choices[0].message.content.strip()
         except Exception as e:
-            logger.warning("Gemini call failed (%s), falling back to rule-based response", e)
+            logger.warning("LLM call failed (%s), falling back to rule-based response", e)
             draft_response_text = _rule_based_response(review_text, rating, items_str, keywords)
 
         # Notify managers with the draft
@@ -99,13 +99,14 @@ async def draft_review_response(review_data: Dict[str, Any]) -> Dict[str, Any]:
                     f"{backend_url}/api/notifications",
                     json={
                         "userId": manager["id"],
-                        "type": "REVIEW_DRAFT_RESPONSE",
+                        "type": "REVIEW_REQUEST",
+                        "channel": "IN_APP",
                         "title": f"New {rating}\u2605 Review — Draft Response Ready",
                         "message": (
                             f"Review: \"{review_text[:80]}...\"\n\n"
                             f"Draft response: {draft_response_text}"
                         ),
-                        "data": {
+                        "templateData": {
                             "reviewId": review_id,
                             "draftResponse": draft_response_text,
                         },
@@ -130,7 +131,7 @@ def _extract_keywords(text: str) -> list:
 
 
 def _rule_based_response(review_text: str, rating: int, items: str, keywords: list) -> str:
-    """Fallback response when Gemini is unavailable."""
+    """Fallback response when the LLM call fails."""
     issue = keywords[0] if keywords else "your experience"
     item_mention = f" with {items}" if items else ""
     return (

@@ -1,11 +1,6 @@
-"""Core agent module"""
-from .agent import MaSoVaAgent, get_agent, send_message, root_agent, agent, app
+"""Core agent module — RedisSessionService used by the live agent.py."""
+from .redis_session_service import RedisSessionService
 
 __all__ = [
-    "MaSoVaAgent",
-    "get_agent",
-    "send_message",
-    "root_agent",
-    "agent",
-    "app",
+    "RedisSessionService",
 ]

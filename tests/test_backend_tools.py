@@ -113,23 +113,32 @@ class TestGetMenuItems:
         with patch("masova_agent.tools.backend_tools.httpx.get") as mock_get:
             mock_get.return_value = _mock_get(200, {
                 "content": [
-                    {"name": "Masala Dosa", "basePrice": 120, "spiceLevel": "MEDIUM"},
-                    {"name": "Filter Coffee", "basePrice": 60},
+                    # basePrice is stored in cents (Long), matching MenuItem entity
+                    {"name": "Masala Dosa", "basePrice": 1200, "spiceLevel": "MEDIUM"},
+                    {"name": "Filter Coffee", "basePrice": 600},
                 ]
             })
             result = get_menu_items("store-1")
         assert "Masala Dosa" in result
-        assert "₹120" in result
+        assert "€12.00" in result
         assert "Filter Coffee" in result
 
     def test_category_filter_passed(self):
         from masova_agent.tools.backend_tools import get_menu_items
         with patch("masova_agent.tools.backend_tools.httpx.get") as mock_get:
-            mock_get.return_value = _mock_get(200, {"content": []})
-            get_menu_items("store-1", category="biryani")
-            # params is always passed as a keyword argument by _get()
-            params = mock_get.call_args.kwargs.get("params", {})
-            assert params.get("category") == "BIRYANI"
+            mock_get.return_value = _mock_get(200, {
+                "content": [
+                    {"name": "Chicken Biryani", "basePrice": 220, "category": "BIRYANI"},
+                    {"name": "Veg Biryani", "basePrice": 180, "category": "BIRYANI"},
+                    {"name": "Filter Coffee", "basePrice": 60, "category": "BEVERAGES"},
+                ]
+            })
+            result = get_menu_items("store-1", category="biryani")
+            # X-Selected-Store-Id is set on the headers passed to httpx.get
+            headers = mock_get.call_args.kwargs.get("headers", {})
+            assert headers.get("X-Selected-Store-Id") == "store-1"
+        assert "Chicken Biryani" in result
+        assert "Filter Coffee" not in result
 
     def test_empty_menu_returns_friendly_message(self):
         from masova_agent.tools.backend_tools import get_menu_items
@@ -152,13 +161,19 @@ class TestGetMenuItems:
 
 class TestGetStoreHours:
     def test_open_store(self):
+        import datetime as _dt
         from masova_agent.tools.backend_tools import get_store_hours
+        today_name = _dt.datetime.now().strftime("%A").upper()
         with patch("masova_agent.tools.backend_tools.httpx.get") as mock_get:
             mock_get.return_value = _mock_get(200, {
                 "name": "MaSoVa Jubilee Hills",
-                "isOpen": True,
-                "openingTime": "09:00",
-                "closingTime": "22:00",
+                "status": "ACTIVE",
+                "currency": "EUR",
+                "operatingHours": {
+                    "weeklySchedule": {
+                        today_name: {"startTime": "09:00", "endTime": "22:00", "isOpen": True},
+                    }
+                },
             })
             result = get_store_hours("store-1")
         assert "OPEN" in result
@@ -166,13 +181,19 @@ class TestGetStoreHours:
         assert "22:00" in result
 
     def test_closed_store(self):
+        import datetime as _dt
         from masova_agent.tools.backend_tools import get_store_hours
+        today_name = _dt.datetime.now().strftime("%A").upper()
         with patch("masova_agent.tools.backend_tools.httpx.get") as mock_get:
             mock_get.return_value = _mock_get(200, {
                 "name": "MaSoVa Banjara Hills",
-                "isOpen": False,
-                "openingTime": "10:00",
-                "closingTime": "23:00",
+                "status": "ACTIVE",
+                "currency": "EUR",
+                "operatingHours": {
+                    "weeklySchedule": {
+                        today_name: {"startTime": "10:00", "endTime": "23:00", "isOpen": False},
+                    }
+                },
             })
             result = get_store_hours("store-2")
         assert "CLOSED" in result
@@ -228,8 +249,7 @@ class TestGetLoyaltyPoints:
         from masova_agent.tools.backend_tools import get_loyalty_points
         with patch("masova_agent.tools.backend_tools.httpx.get") as mock_get:
             mock_get.return_value = _mock_get(200, {
-                "loyaltyPoints": 3200,
-                "loyaltyTier": "GOLD",
+                "loyaltyInfo": {"totalPoints": 3200, "tier": "GOLD"},
             })
             result = get_loyalty_points()
         assert "3200" in result
@@ -240,8 +260,7 @@ class TestGetLoyaltyPoints:
         from masova_agent.tools.backend_tools import get_loyalty_points
         with patch("masova_agent.tools.backend_tools.httpx.get") as mock_get:
             mock_get.return_value = _mock_get(200, {
-                "loyaltyPoints": 12000,
-                "loyaltyTier": "PLATINUM",
+                "loyaltyInfo": {"totalPoints": 12000, "tier": "PLATINUM"},
             })
             result = get_loyalty_points()
         assert "PLATINUM" in result
@@ -271,21 +290,29 @@ class TestGetStoreWaitTime:
     def test_empty_kitchen(self):
         from masova_agent.tools.backend_tools import get_store_wait_time
         with patch("masova_agent.tools.backend_tools.httpx.get") as mock_get:
-            mock_get.return_value = _mock_get(200, {"totalElements": 0})
+            mock_get.return_value = _mock_get(200, [])
             result = get_store_wait_time("store-1")
         assert "free" in result.lower() or "fast" in result.lower()
 
     def test_busy_kitchen(self):
         from masova_agent.tools.backend_tools import get_store_wait_time
+        # Function issues 3 GETs (RECEIVED, PREPARING, OVEN) and sums counts.
+        responses = [_mock_get(200, [{"id": str(i)} for i in range(4)]) for _ in range(3)]
         with patch("masova_agent.tools.backend_tools.httpx.get") as mock_get:
-            mock_get.return_value = _mock_get(200, {"totalElements": 12})
+            mock_get.side_effect = responses
             result = get_store_wait_time("store-1")
         assert "busy" in result.lower() or "40" in result
 
     def test_moderate_kitchen(self):
         from masova_agent.tools.backend_tools import get_store_wait_time
+        # 3 + 2 + 2 = 7 active orders across the 3 status buckets.
+        responses = [
+            _mock_get(200, [{"id": str(i)} for i in range(3)]),
+            _mock_get(200, [{"id": str(i)} for i in range(2)]),
+            _mock_get(200, [{"id": str(i)} for i in range(2)]),
+        ]
         with patch("masova_agent.tools.backend_tools.httpx.get") as mock_get:
-            mock_get.return_value = _mock_get(200, {"totalElements": 7})
+            mock_get.side_effect = responses
             result = get_store_wait_time("store-1")
         assert "25" in result or "moderate" in result.lower() or "busy" in result.lower()
 
@@ -327,7 +354,11 @@ class TestCancelOrder:
 class TestRequestRefund:
     def test_valid_refund_request(self):
         from masova_agent.tools.backend_tools import request_refund
-        with patch("masova_agent.tools.backend_tools.httpx.post") as mock_post:
+        with patch("masova_agent.tools.backend_tools.httpx.get") as mock_get, \
+             patch("masova_agent.tools.backend_tools.httpx.post") as mock_post:
+            mock_get.return_value = _mock_get(200, {
+                "paymentTransactionId": "TXN-001", "total": 45.50,
+            })
             mock_post.return_value = _mock_post(201, {"refundId": "REF-123"})
             result = request_refund("ORD-001", "Wrong items delivered")
         assert "REF-123" in result or "refund" in result.lower()
@@ -339,7 +370,11 @@ class TestRequestRefund:
 
     def test_api_error_gives_fallback(self):
         from masova_agent.tools.backend_tools import request_refund
-        with patch("masova_agent.tools.backend_tools.httpx.post") as mock_post:
+        with patch("masova_agent.tools.backend_tools.httpx.get") as mock_get, \
+             patch("masova_agent.tools.backend_tools.httpx.post") as mock_post:
+            mock_get.return_value = _mock_get(200, {
+                "paymentTransactionId": "TXN-001", "total": 45.50,
+            })
             mock_post.side_effect = Exception("timeout")
             result = request_refund("ORD-001", "Completely wrong order received")
         assert "3" in result or "days" in result.lower() or "logged" in result.lower()

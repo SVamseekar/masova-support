@@ -3,12 +3,14 @@ MaSoVa Customer Support Agent
 """
 
 from google.adk.agents import LlmAgent
+from google.adk.models.lite_llm import LiteLlm
 from google.adk.runners import Runner
 from google.adk.sessions import InMemorySessionService
 from google.genai import types as genai_types
 import asyncio
 import logging
 import os
+from pathlib import Path
 from dotenv import load_dotenv
 
 from .tools.backend_tools import (
@@ -23,7 +25,10 @@ from .tools.backend_tools import (
 )
 from .core.redis_session_service import RedisSessionService
 
-load_dotenv()
+# Anchored to the project root rather than relying on process cwd — uvicorn's
+# --reload spawns the app in a subprocess whose cwd isn't guaranteed to match
+# where the server was launched from.
+load_dotenv(Path(__file__).resolve().parents[2] / ".env")
 logger = logging.getLogger(__name__)
 
 # ADK uses InMemorySessionService so it gets proper Session objects with .events
@@ -35,9 +40,15 @@ _session_service = RedisSessionService(redis_url=_redis_url)
 
 _created_sessions: dict[str, str] = {}  # session_key -> actual session_id
 
+# LiteLlm routes ADK's agent/tool-calling machinery through LiteLLM's provider
+# adapters. LLM_MODEL is a litellm model string (provider/model-id) and
+# LLM_API_KEY is passed explicitly so credentials never rely on a
+# provider-named environment variable being present.
+_llm_model = LiteLlm(model=os.environ["LLM_MODEL"], api_key=os.environ["LLM_API_KEY"])
+
 root_agent = LlmAgent(
     name="MaSoVa_Support",
-    model="gemini-2.5-flash",
+    model=_llm_model,
     instruction="""You are MaSoVa's friendly and efficient customer support assistant.
 
 MaSoVa is a multi-branch restaurant chain serving South Indian, North Indian,

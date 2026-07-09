@@ -26,7 +26,7 @@ def _resp(status: int, body):
 
 
 def _mock_config():
-    return MagicMock(backend_url="http://test", agent_token="tok", google_api_key="key")
+    return MagicMock(backend_url="http://test", agent_token="tok", llm_api_key="key", llm_model="test/model")
 
 
 def _async_client_ctx(client):
@@ -169,7 +169,7 @@ class TestShiftOptimisationMondayBug:
         # 7 days × 3 slots × at least 1 staff = 21 minimum
         assert len(shifts) >= 21
         # All shifts must fall within the correct week
-        dates = {s["startTime"][:10] for s in shifts}
+        dates = {s["scheduledStart"][:10] for s in shifts}
         assert len(dates) == 7
 
 

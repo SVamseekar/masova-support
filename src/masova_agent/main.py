@@ -11,6 +11,7 @@ import logging
 import os
 import uuid
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Optional
 
 from dotenv import load_dotenv
@@ -19,11 +20,14 @@ from fastapi import Depends, FastAPI, HTTPException, Body
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
+# Anchored to the project root rather than relying on process cwd — uvicorn's
+# --reload spawns the app in a subprocess whose cwd isn't guaranteed to match
+# where the server was launched from.
+load_dotenv(Path(__file__).resolve().parents[2] / ".env")
+
 from .agent import send_message_async, _session_service
 from .auth import AgentIdentity, bind_identity, reset_identity, verify_customer_jwt, verify_trigger_api_key
 from .scheduler.scheduler import scheduler, register_jobs
-
-load_dotenv()
 logger = logging.getLogger(__name__)
 
 

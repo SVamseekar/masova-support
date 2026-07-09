@@ -2,18 +2,23 @@
 Configuration management for MaSoVa Agent
 """
 import os
+from pathlib import Path
 from typing import Optional
 from dataclasses import dataclass
 from dotenv import load_dotenv
 
 from ..exceptions import ConfigurationError
 
+# Anchored to the project root rather than relying on process cwd — uvicorn's
+# --reload spawns the app in a subprocess whose cwd isn't guaranteed to match
+# where the server was launched from.
+_DEFAULT_ENV_FILE = Path(__file__).resolve().parents[3] / ".env"
+
 
 @dataclass
 class AgentConfig:
     """Agent configuration"""
     name: str = "MaSoVa_Intelligence"
-    model: str = "gemini-2.5-flash"
     app_name: str = "masova_support_agent"
     max_retries: int = 3
     timeout: float = 30.0
@@ -22,8 +27,8 @@ class AgentConfig:
 @dataclass
 class APIConfig:
     """API configuration"""
-    google_api_key: str
-    use_vertex_ai: bool = False
+    llm_api_key: str
+    llm_model: str
     location_api_url: str = "http://ip-api.com/json/"
     location_timeout: float = 5.0
 
@@ -59,7 +64,7 @@ class Config:
         if env_file:
             load_dotenv(env_file, override=True)
         else:
-            load_dotenv(override=True)
+            load_dotenv(_DEFAULT_ENV_FILE, override=True)
 
         # Initialize sub-configs
         self.agent = AgentConfig()
@@ -73,23 +78,28 @@ class Config:
         # Agent infrastructure config
         self.backend_url: str = os.getenv("BACKEND_URL", "http://192.168.50.88:8080")
         self.agent_token: str = os.getenv("AGENT_TOKEN", "")
-        self.google_api_key: str = self.api.google_api_key
+        self.llm_api_key: str = self.api.llm_api_key
+        self.llm_model: str = self.api.llm_model
         self.rabbitmq_url: str = os.getenv("RABBITMQ_URL", "amqp://guest:guest@192.168.50.88:5672/")
 
     def _load_api_config(self) -> APIConfig:
         """Load API configuration from environment"""
-        api_key = os.getenv("GOOGLE_API_KEY")
+        api_key = os.getenv("LLM_API_KEY")
         if not api_key:
             raise ConfigurationError(
-                "GOOGLE_API_KEY not found in environment. "
+                "LLM_API_KEY not found in environment. "
+                "Please set it in your .env file."
+            )
+        model = os.getenv("LLM_MODEL")
+        if not model:
+            raise ConfigurationError(
+                "LLM_MODEL not found in environment. "
                 "Please set it in your .env file."
             )
 
-        use_vertex = os.getenv("GOOGLE_GENAI_USE_VERTEXAI", "0") == "1"
-
         return APIConfig(
-            google_api_key=api_key,
-            use_vertex_ai=use_vertex,
+            llm_api_key=api_key,
+            llm_model=model,
             location_api_url=os.getenv(
                 "LOCATION_API_URL",
                 "http://ip-api.com/json/"
