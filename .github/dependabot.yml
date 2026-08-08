@@ -1,19 +1,59 @@
+# Dependabot — industry defaults for this repo
+# Manifests: requirements.txt + pyproject.toml (pip), .github/workflows (actions)
+# Required CI check on PRs: "test"
 version: 2
+
 updates:
+  # ── GitHub Actions ──────────────────────────────────────────
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
       interval: "weekly"
-    open-pull-requests-limit: 5
+      day: "monday"
+      time: "09:00"
+      timezone: "America/New_York"
+    open-pull-requests-limit: 3
     labels:
       - "dependencies"
       - "github-actions"
+    commit-message:
+      prefix: "chore"
+      include: "scope"
+    # One PR for all Action bumps (minor noise for a solo maintainer)
+    groups:
+      github-actions:
+        patterns:
+          - "*"
 
+  # ── Python (pip) ────────────────────────────────────────────
+  # Watches requirements.txt and pyproject.toml at repo root.
+  # Prefer requirements.txt as the runtime install source (CI uses it).
   - package-ecosystem: "pip"
     directory: "/"
     schedule:
       interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "America/New_York"
     open-pull-requests-limit: 5
     labels:
       - "dependencies"
       - "python"
+    commit-message:
+      prefix: "chore"
+      include: "scope"
+    # Raise lower bounds / pins when updates land (works with >= and ==)
+    versioning-strategy: increase
+    # Group non-major noise; leave major bumps as individual reviewable PRs
+    groups:
+      python-minor-patch:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+    # High-churn Google transitive stack: still allowed, but majors stay ungrouped
+    ignore:
+      # google-adk is the product surface — pin majors carefully by hand
+      - dependency-name: "google-adk"
+        update-types: ["version-update:semver-major"]
