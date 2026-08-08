@@ -1,6 +1,10 @@
 """
 MaSoVa backend API tools for the support agent.
 Each function is registered as an ADK tool — Gemini calls them when needed.
+
+Customer identity always comes from the verified JWT bound at the request
+boundary (see auth.py / contextvars). LLM-supplied ids are never trusted for
+ownership or outbound calls.
 """
 
 import logging
@@ -33,6 +37,20 @@ def _base() -> str:
     return get_config().backend_url + "/api"
 
 
+def _forbidden_user_message() -> str:
+    """User-facing message for backend 403 — never leak raw API bodies."""
+    return (
+        "I'm not able to do that — this order doesn't belong to your account, "
+        "or you don't have permission for that action."
+    )
+
+
+def _map_http_error(status_code: int) -> dict:
+    if status_code == 403:
+        return {"error": "forbidden", "message": _forbidden_user_message()}
+    return {"error": f"HTTP {status_code}"}
+
+
 def _get(path: str, params: dict | None = None) -> dict:
     try:
         r = httpx.get(f"{_base()}{path}", params=params, headers=_headers(), timeout=8.0)
@@ -40,7 +58,7 @@ def _get(path: str, params: dict | None = None) -> dict:
         return r.json()
     except httpx.HTTPStatusError as e:
         logger.warning("GET %s → %s", path, e.response.status_code)
-        return {"error": f"HTTP {e.response.status_code}"}
+        return _map_http_error(e.response.status_code)
     except Exception as e:
         logger.error("GET %s failed: %s", path, e)
         return {"error": str(e)}
@@ -53,10 +71,16 @@ def _post(path: str, body: dict) -> dict:
         return r.json()
     except httpx.HTTPStatusError as e:
         logger.warning("POST %s → %s", path, e.response.status_code)
-        return {"error": f"HTTP {e.response.status_code}"}
+        return _map_http_error(e.response.status_code)
     except Exception as e:
         logger.error("POST %s failed: %s", path, e)
         return {"error": str(e)}
+
+
+def _format_error_reply(data: dict, fallback: str) -> str:
+    if data.get("error") == "forbidden":
+        return data.get("message", _forbidden_user_message())
+    return fallback
 
 
 # ---------------------------------------------------------------------------
@@ -75,7 +99,10 @@ def get_order_status(order_id: str) -> str:
     """
     data = _get(f"/orders/{order_id}")
     if "error" in data:
-        return f"Sorry, I couldn't find order {order_id}. Please double-check the order ID."
+        return _format_error_reply(
+            data,
+            f"Sorry, I couldn't find order {order_id}. Please double-check the order ID.",
+        )
 
     status = data.get("status", "UNKNOWN")
     order_num = data.get("orderNumber", order_id)
@@ -103,7 +130,7 @@ def get_order_status(order_id: str) -> str:
     }
     desc = status_messages.get(status, f"is currently {status}")
     total = data.get("total", "")
-    total_str = f" Total: €{total:.2f}." if total else ""
+    total_str = f" Total: €{total:.2f}." if isinstance(total, (int, float)) and total else ""
     return (
         f"Order #{order_num}{customer_str} {desc}{eta_str}.{total_str}\n"
         f"Items: {item_list or 'details unavailable'}."
@@ -124,7 +151,10 @@ def get_menu_items(store_id: str, category: str = "") -> str:
     """
     data = _get("/menu", params={"storeId": store_id, "available": "true"})
     if "error" in data:
-        return "Sorry, I couldn't fetch the menu right now. Please try again shortly."
+        return _format_error_reply(
+            data,
+            "Sorry, I couldn't fetch the menu right now. Please try again shortly.",
+        )
 
     items = data if isinstance(data, list) else data.get("content", data.get("items", []))
 
@@ -140,18 +170,19 @@ def get_menu_items(store_id: str, category: str = "") -> str:
         items = filtered if filtered else items  # fall back to all if no match
 
     if not items:
-        return f"No menu items found at this store right now."
+        return "No menu items found at this store right now."
 
     lines = []
     for item in items[:12]:
         name = item.get("name", "Unknown")
         price = item.get("discountedPrice") or item.get("basePrice", 0)
-        price_eur = price / 100 if price > 100 else price
+        # Backend may return minor units (cents) or major units; large ints → cents.
+        price_display = price / 100 if isinstance(price, (int, float)) and price > 100 else price
         desc = item.get("description", "")
         spice = item.get("spiceLevel", "")
         spice_str = f" [{spice}]" if spice and spice != "NONE" else ""
         desc_str = f" — {desc[:60]}" if desc else ""
-        lines.append(f"• {name}{spice_str}: €{price_eur:.2f}{desc_str}")
+        lines.append(f"• {name}{spice_str}: €{price_display:.2f}{desc_str}")
 
     total = len(items)
     more = f"\n...and {total - 12} more items." if total > 12 else ""
@@ -171,15 +202,23 @@ def get_store_hours(store_id: str) -> str:
     """
     data = _get(f"/stores/{store_id}")
     if "error" in data:
-        return "Sorry, I couldn't retrieve store information right now."
+        return _format_error_reply(
+            data,
+            "Sorry, I couldn't retrieve store information right now.",
+        )
 
     name = data.get("name", f"Store {store_id}")
-    status = data.get("status", "UNKNOWN")
-    config = data.get("operatingConfig", {})
-    open_time = config.get("openingTime", "N/A")
-    close_time = config.get("closingTime", "N/A")
-    is_active = status == "ACTIVE"
-    status_str = "currently ACTIVE" if is_active else f"currently {status}"
+    # Support both flat (legacy) and nested operatingConfig shapes from the backend.
+    config = data.get("operatingConfig") or {}
+    open_time = data.get("openingTime") or config.get("openingTime", "N/A")
+    close_time = data.get("closingTime") or config.get("closingTime", "N/A")
+    if "isOpen" in data:
+        is_open = bool(data.get("isOpen"))
+        status_str = "currently OPEN" if is_open else "currently CLOSED"
+    else:
+        status = data.get("status", "UNKNOWN")
+        is_active = status == "ACTIVE"
+        status_str = "currently ACTIVE" if is_active else f"currently {status}"
     hours_str = f"\nHours: {open_time} – {close_time}" if open_time != "N/A" else ""
     currency = data.get("currency", "EUR")
     locale = data.get("locale", "")
@@ -190,7 +229,8 @@ def get_store_hours(store_id: str) -> str:
 def submit_complaint(order_id: str, description: str) -> str:
     """
     Submit a complaint or support ticket for an order, on behalf of the
-    customer currently chatting with the agent.
+    customer currently chatting with the agent. Recorded for manager review —
+    the agent does not take immediate remedial action.
 
     Args:
         order_id: The order ID the complaint relates to.
@@ -211,15 +251,24 @@ def submit_complaint(order_id: str, description: str) -> str:
     })
 
     if "error" in data:
-        return (
-            "Your complaint has been noted. Our support team will contact you within 24 hours. "
-            "You can also reach us at support@masova.com."
+        return _format_error_reply(
+            data,
+            (
+                "Your complaint has been noted. Our support team will contact you within 24 hours. "
+                "You can also reach us at support@masova.com."
+            ),
         )
 
     ticket_ref = data.get("id", data.get("ticketId", f"SUP-{order_id[-6:]}"))
+    status = data.get("status", "")
+    pending_note = (
+        " It is pending manager review and has not been actioned yet."
+        if str(status).upper() in ("PENDING", "PENDING_APPROVAL", "")
+        else ""
+    )
     return (
-        f"Your complaint has been submitted. Ticket: {ticket_ref}. "
-        f"We'll respond within 24 hours."
+        f"Your complaint has been recorded for manager review. Ticket: {ticket_ref}.{pending_note} "
+        f"We'll respond within 24 hours once it has been reviewed."
     )
 
 
@@ -234,7 +283,10 @@ def get_loyalty_points() -> str:
     identity = get_current_identity()
     data = _get(f"/customers/{identity.user_id}")
     if "error" in data:
-        return "I couldn't retrieve your loyalty points right now. Please check the MaSoVa app."
+        return _format_error_reply(
+            data,
+            "I couldn't retrieve your loyalty points right now. Please check the MaSoVa app.",
+        )
 
     points = data.get("loyaltyPoints") or data.get("points", 0) or 0
     tier = data.get("loyaltyTier") or data.get("tier", "BRONZE")
@@ -271,7 +323,10 @@ def get_store_wait_time(store_id: str) -> str:
         "size": 1,
     })
     if "error" in data:
-        return "I couldn't check the current wait time. Please call the store directly."
+        return _format_error_reply(
+            data,
+            "I couldn't check the current wait time. Please call the store directly.",
+        )
 
     active = data.get("totalElements", 0) if isinstance(data, dict) else len(data)
 
@@ -288,7 +343,7 @@ def get_store_wait_time(store_id: str) -> str:
 def cancel_order(order_id: str, reason: str) -> str:
     """
     Request cancellation of a customer order if it is still in a cancellable
-    state (RECEIVED only). This submits a cancellation request for manager
+    state (PENDING or RECEIVED). This submits a cancellation request for manager
     approval — the agent never cancels an order immediately.
 
     Args:
@@ -310,21 +365,27 @@ def cancel_order(order_id: str, reason: str) -> str:
                 f"Orders can only be cancelled when PENDING or RECEIVED. "
                 f"I can submit a complaint or refund request instead."
             )
+    elif order_data.get("error") == "forbidden":
+        return order_data.get("message", _forbidden_user_message())
 
     # Always go through the approval-gated endpoint — the agent requests
     # cancellation on the customer's behalf, a manager approves or rejects it.
     data = _post(f"/orders/{order_id}/cancel-request", {"reason": reason})
     if "error" in data:
-        return f"I wasn't able to submit a cancellation request for order #{order_id} right now. Please contact the restaurant directly."
+        return _format_error_reply(
+            data,
+            f"I wasn't able to submit a cancellation request for order #{order_id} right now. "
+            f"Please contact the restaurant directly.",
+        )
     return (
-        f"Your cancellation request for order #{order_id} has been submitted (reason: {reason}) "
-        f"and is pending manager approval. We'll notify you once it's reviewed."
+        f"Your cancellation request for order #{order_id} has been submitted for manager review. "
+        f"Reason: {reason}. The order is still active until a manager approves the cancellation."
     )
 
 
 def request_refund(order_id: str, reason: str) -> str:
     """
-    Request a refund for an order.
+    Request a refund for an order (pending manager approval; no money moves immediately).
 
     Args:
         order_id: The order ID to refund.
@@ -339,14 +400,23 @@ def request_refund(order_id: str, reason: str) -> str:
     data = _post("/payments/refund/request", {"orderId": order_id, "reason": reason})
 
     if "error" in data:
-        return (
-            "Your refund request has been logged. A specialist will review it and process "
-            "within 3–5 business days. You'll receive an email confirmation."
+        return _format_error_reply(
+            data,
+            (
+                "Your refund request has been logged. A specialist will review it and process "
+                "within 3–5 business days. You'll receive an email confirmation."
+            ),
         )
 
     refund_id = data.get("refundId", data.get("id", ""))
+    status = str(data.get("status", "")).upper()
     ref_str = f" (Ref: {refund_id})" if refund_id else ""
+    pending_note = (
+        " It is pending manager approval — no refund has been processed yet."
+        if status in ("PENDING_APPROVAL", "PENDING", "")
+        else ""
+    )
     return (
-        f"Refund requested for order {order_id}{ref_str}. "
-        f"Processing takes 3–5 business days. We'll notify you by email."
+        f"Refund request submitted for order {order_id}{ref_str}.{pending_note} "
+        f"If approved, processing takes 3–5 business days and we'll notify you by email."
     )
