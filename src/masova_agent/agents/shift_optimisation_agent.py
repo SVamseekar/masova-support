@@ -28,14 +28,35 @@ HIGH_DEMAND_THRESHOLD = 15  # predicted orders/hour
 
 
 
+SHIFT_INSTRUCTION = """You are MaSoVa Shift Optimisation Agent (ops).
+Use read_staff_slots and get_forecast_snippet. Draft bulk shifts with create_draft_shifts
+(status DRAFT only). notify_managers with rationale. Never confirm shifts as final.
+"""
+
+
+def _shift_llm_runner():
+    from ..runtime.ops_llm import make_ops_llm_runner
+    from ..runtime.wrap import AGENT_ALLOWLISTS
+
+    return make_ops_llm_runner(
+        instruction=SHIFT_INSTRUCTION,
+        tool_names=list(AGENT_ALLOWLISTS["shift_optimisation"]),
+    )
+
+
 async def run_shift_optimisation():
-    """Public entry — routes through AgentRuntime with rule fallback."""
+    """Public entry — LLM tool loop + rule fallback."""
     from ..runtime.wrap import run_ops_agent
+    from ..runtime.ops_llm import ops_prefer_llm
+
+    prefer = ops_prefer_llm()
     return await run_ops_agent(
         "shift_optimisation",
         "scheduled",
         _rule_run_shift_optimisation,
-        goal="Run shift_optimisation",
+        goal="Draft next week's shift roster from demand forecast",
+        llm_runner=_shift_llm_runner() if prefer else None,
+        prefer_llm=prefer,
     )
 
 async def _rule_run_shift_optimisation() -> Dict[str, Any]:

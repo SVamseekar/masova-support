@@ -22,14 +22,36 @@ def _get_config():
 
 
 
+DEMAND_INSTRUCTION = """You are MaSoVa Demand Forecast Agent (ops).
+COMPUTE forecasts with compute_wma_forecast from tool-provided series only.
+Write results via write_forecast. Optionally notify_managers of anomalies.
+Never invent order history numbers.
+"""
+
+
+def _demand_llm_runner():
+    from ..runtime.ops_llm import make_ops_llm_runner
+    from ..runtime.wrap import AGENT_ALLOWLISTS
+
+    return make_ops_llm_runner(
+        instruction=DEMAND_INSTRUCTION,
+        tool_names=list(AGENT_ALLOWLISTS["demand_forecast"]),
+    )
+
+
 async def run_demand_forecast():
-    """Public entry — routes through AgentRuntime with rule fallback."""
+    """Public entry — runtime with optional LLM summarize loop + rule fallback."""
     from ..runtime.wrap import run_ops_agent
+    from ..runtime.ops_llm import ops_prefer_llm
+
+    prefer = ops_prefer_llm()
     return await run_ops_agent(
         "demand_forecast",
         "scheduled",
         _rule_run_demand_forecast,
-        goal="Run demand_forecast",
+        goal="Compute WMA demand forecasts and write daily_forecast records",
+        llm_runner=_demand_llm_runner() if prefer else None,
+        prefer_llm=prefer,
     )
 
 async def _rule_run_demand_forecast() -> Dict[str, Any]:

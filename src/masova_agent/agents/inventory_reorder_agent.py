@@ -1,10 +1,13 @@
 """
 Agent 3: Inventory Reorder
 Schedule: Every 6 hours
-Input: Current stock levels + Agent 2 demand forecast for next 24h
-Logic: If (currentStock - predictedConsumption) < minimumStock before next expected delivery -> draft PO
+Input: Current stock levels + demand forecast for next 24h
+Logic: If low stock → draft PO (PROPOSE) + notify manager
 Output: POST /api/purchase-orders/auto-generate with DRAFT status
         POST /api/notifications to notify manager
+
+LLM path: multi-step tool loop (list_low_stock → forecast → create_draft_po → notify).
+Fallback: threshold-based draft PO rule path.
 """
 import httpx
 import logging
@@ -13,21 +16,48 @@ from typing import Dict, List, Any
 
 logger = logging.getLogger(__name__)
 
+INVENTORY_INSTRUCTION = """You are MaSoVa Inventory Reorder Agent (ops).
 
+Goal: Keep stores stocked without over-ordering. You PROPOSE draft purchase orders only.
+
+Workflow:
+1. Call list_low_stock (optionally scoped by store).
+2. Optionally call get_forecast_snippet for high-risk SKUs — use tool numbers only.
+3. Group items by preferred_supplier_id and call create_draft_po with justified quantities
+   from reorder_quantity / forecast data (never invent stock counts).
+4. Call notify_managers with a clear summary and rationale.
+
+Do not claim orders are finalized. Manager approval is required.
+"""
+
+
+def _inventory_llm_runner():
+    from ..runtime.ops_llm import make_ops_llm_runner
+    from ..runtime.wrap import AGENT_ALLOWLISTS
+
+    return make_ops_llm_runner(
+        instruction=INVENTORY_INSTRUCTION,
+        tool_names=list(AGENT_ALLOWLISTS["inventory_reorder"]),
+    )
 
 
 async def run_inventory_reorder():
-    """Public entry — routes through AgentRuntime with rule fallback."""
+    """Public entry — routes through AgentRuntime with LLM tool loop + rule fallback."""
     from ..runtime.wrap import run_ops_agent
+    from ..runtime.ops_llm import ops_prefer_llm
+
     return await run_ops_agent(
         "inventory_reorder",
         "scheduled",
         _rule_run_inventory_reorder,
-        goal="Run inventory_reorder",
+        goal="Identify low stock and draft purchase orders for manager approval",
+        llm_runner=_inventory_llm_runner() if ops_prefer_llm() else None,
+        prefer_llm=ops_prefer_llm(),
     )
 
+
 async def _rule_run_inventory_reorder() -> Dict[str, Any]:
-    """Main entry point. Returns summary of POs drafted."""
+    """Rule fallback. Returns summary of POs drafted."""
     from ..utils.config import get_config
     config = get_config()
     backend_url = config.backend_url
@@ -103,7 +133,12 @@ async def _rule_run_inventory_reorder() -> Dict[str, Any]:
                     )
 
     logger.info("Inventory reorder complete: %d POs drafted, %d items checked", pos_drafted, items_checked)
-    return {"pos_drafted": pos_drafted, "items_checked": items_checked}
+    return {
+        "pos_drafted": pos_drafted,
+        "items_checked": items_checked,
+        "summary": f"Rule fallback: {pos_drafted} draft PO(s), {items_checked} items checked",
+        "status": "ok",
+    }
 
 
 async def _get_stores(client: httpx.AsyncClient, backend_url: str, headers: dict) -> List[Dict]:

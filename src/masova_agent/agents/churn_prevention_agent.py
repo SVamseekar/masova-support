@@ -19,14 +19,37 @@ RECOVERY_DISCOUNT_PERCENT = 15
 
 
 
+CHURN_INSTRUCTION = """You are MaSoVa Churn Prevention Agent (ops).
+1. list_stores then read_churn_segment per store (tool data only).
+2. Optionally get_top_items for personalised copy.
+3. create_draft_campaign (DRAFT) + notify_managers with rationale.
+Never send live campaigns.
+"""
+
+
+def _churn_llm_runner():
+    from ..runtime.ops_llm import make_ops_llm_runner
+    from ..runtime.wrap import AGENT_ALLOWLISTS
+
+    return make_ops_llm_runner(
+        instruction=CHURN_INSTRUCTION,
+        tool_names=list(AGENT_ALLOWLISTS["churn_prevention"]),
+    )
+
+
 async def run_churn_prevention():
-    """Public entry — routes through AgentRuntime with rule fallback."""
+    """Public entry — LLM tool loop + rule fallback."""
     from ..runtime.wrap import run_ops_agent
+    from ..runtime.ops_llm import ops_prefer_llm
+
+    prefer = ops_prefer_llm()
     return await run_ops_agent(
         "churn_prevention",
         "scheduled",
         _rule_run_churn_prevention,
-        goal="Run churn_prevention",
+        goal="Draft win-back campaigns for churned high-value customers",
+        llm_runner=_churn_llm_runner() if prefer else None,
+        prefer_llm=prefer,
     )
 
 async def _rule_run_churn_prevention() -> Dict[str, Any]:

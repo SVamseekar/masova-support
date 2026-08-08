@@ -42,14 +42,35 @@ COACHING_TIPS = {
 
 
 
+KITCHEN_INSTRUCTION = """You are MaSoVa Kitchen Performance Coach (ops).
+Call read_kitchen_metrics, write a short brief from those numbers only,
+then draft_kitchen_brief / notify_managers. Do not invent metrics.
+"""
+
+
+def _kitchen_llm_runner():
+    from ..runtime.ops_llm import make_ops_llm_runner
+    from ..runtime.wrap import AGENT_ALLOWLISTS
+
+    return make_ops_llm_runner(
+        instruction=KITCHEN_INSTRUCTION,
+        tool_names=list(AGENT_ALLOWLISTS["kitchen_coach"]),
+    )
+
+
 async def run_kitchen_coach():
-    """Public entry — routes through AgentRuntime with rule fallback."""
+    """Public entry — LLM tool loop + rule fallback."""
     from ..runtime.wrap import run_ops_agent
+    from ..runtime.ops_llm import ops_prefer_llm
+
+    prefer = ops_prefer_llm()
     return await run_ops_agent(
         "kitchen_coach",
         "scheduled",
         _rule_run_kitchen_coach,
-        goal="Run kitchen_coach",
+        goal="Send nightly kitchen performance brief from metrics",
+        llm_runner=_kitchen_llm_runner() if prefer else None,
+        prefer_llm=prefer,
     )
 
 async def _rule_run_kitchen_coach() -> Dict[str, Any]:

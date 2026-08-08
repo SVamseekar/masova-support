@@ -2,14 +2,16 @@
 Agent 8: Dynamic Pricing Suggestions
 Schedule: Every 30 minutes during 9am-10pm IST
 Input: Active order count, demand trend (last 30 min), time-to-close, top products
-Output: DRAFT price adjustment notification to manager — agent NEVER changes prices automatically.
-        Manager approves via one-tap → PATCH /api/menu/{id} is called by the frontend, not this agent.
-Uses: GET /api/orders (active), GET /api/analytics/products, GET /api/menu
+Output: DRAFT price adjustment notification to manager — agent NEVER changes prices.
+        Manager approves via one-tap → PATCH /api/menu/{id} is called by the frontend.
+
+LLM path: only when overload/underload signal exists; tool loop proposes notifications.
+Fallback: threshold messages (same caps).
 """
 import httpx
 import logging
 from datetime import datetime, timedelta
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -21,18 +23,102 @@ PRICE_DISCOUNT_PCT = 15           # % discount suggestion for slow periods
 STORE_CLOSE_HOUR = 22             # 10pm IST — don't suggest discounts if <2h to close
 MIN_HOURS_BEFORE_CLOSE = 2
 
+PRICING_INSTRUCTION = """You are MaSoVa Dynamic Pricing Agent (ops).
 
+You SUGGEST temporary price adjustments only. You MUST NEVER patch menu prices
+or call any execute/price-write tool (none are available).
+
+Workflow when context.signal is overload or underload:
+1. Use count_active_orders / count_recent_orders / compute_pricing_signal for numbers.
+2. For overload: get_top_items then propose_price_suggestion(direction=increase, percent<=12).
+3. For underload: get_slow_items then propose_price_suggestion(direction=discount, percent<=15).
+4. Include rationale citing the tool counts.
+
+If signal is none, do nothing.
+Respect percent caps. Manager applies prices in the UI.
+"""
+
+
+async def _pricing_pre_gate(request):
+    """Skip LLM when no store has overload/underload signal (cost control)."""
+    from ..tools.ops_tools import compute_pricing_signal, list_stores
+
+    # Tests can force signal via context
+    forced = (request.context or {}).get("pricing_signal")
+    if forced == "none":
+        return {
+            "status": "ok",
+            "summary": "No pricing signal — skipped LLM",
+            "stores_evaluated": 0,
+            "suggestions_sent": 0,
+            "skipped_llm": True,
+            "tools_used": [],
+            "proposals": [],
+        }
+    if forced in ("overload", "underload"):
+        return None  # proceed to LLM / scripted plan
+
+    # Fast path without full rule agent: check signals only
+    try:
+        stores_res = await list_stores()
+        stores = stores_res.get("stores") or []
+    except Exception:
+        return None  # let LLM or fallback handle
+
+    any_signal = False
+    signals = []
+    for s in stores:
+        sid = s.get("id")
+        if not sid:
+            continue
+        sig = await compute_pricing_signal(sid)
+        signals.append(sig)
+        if sig.get("signal") in ("overload", "underload"):
+            any_signal = True
+
+    if not any_signal:
+        return {
+            "status": "ok",
+            "summary": "No overload/underload signal — skipped LLM",
+            "stores_evaluated": len(signals),
+            "suggestions_sent": 0,
+            "skipped_llm": True,
+            "tools_used": ["compute_pricing_signal"],
+            "proposals": [],
+            "signals": [{"store_id": s.get("store_id"), "signal": s.get("signal")} for s in signals],
+        }
+    # Attach signals for the LLM context
+    request.context = dict(request.context or {})
+    request.context["signals"] = signals
+    return None
+
+
+def _pricing_llm_runner():
+    from ..runtime.ops_llm import make_ops_llm_runner
+    from ..runtime.wrap import AGENT_ALLOWLISTS
+
+    return make_ops_llm_runner(
+        instruction=PRICING_INSTRUCTION,
+        tool_names=list(AGENT_ALLOWLISTS["dynamic_pricing"]),
+        pre_gate=_pricing_pre_gate,
+    )
 
 
 async def run_dynamic_pricing():
-    """Public entry — routes through AgentRuntime with rule fallback."""
+    """Public entry — runtime with pre-gated LLM tool loop + rule fallback."""
     from ..runtime.wrap import run_ops_agent
+    from ..runtime.ops_llm import ops_prefer_llm
+
+    prefer = ops_prefer_llm()
     return await run_ops_agent(
         "dynamic_pricing",
         "scheduled",
         _rule_run_dynamic_pricing,
-        goal="Run dynamic_pricing",
+        goal="Suggest temporary price adjustments when kitchen is overloaded or underloaded",
+        llm_runner=_pricing_llm_runner() if prefer else None,
+        prefer_llm=prefer,
     )
+
 
 async def _rule_run_dynamic_pricing() -> Dict[str, Any]:
     """Suggest price adjustments based on real-time demand vs capacity."""
@@ -107,6 +193,7 @@ async def _rule_run_dynamic_pricing() -> Dict[str, Any]:
         "stores_evaluated": stores_evaluated,
         "suggestions_sent": suggestions_sent,
         "evaluated_at": datetime.now().isoformat(),
+        "summary": f"Rule fallback: {suggestions_sent} suggestion(s) across {stores_evaluated} store(s)",
     }
 
 

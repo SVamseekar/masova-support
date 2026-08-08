@@ -7,9 +7,38 @@ Shared runtime for all MaSoVa support operators: support chat plus seven schedul
 ```text
 Chat JWT / Trigger API key / APScheduler / RabbitMQ
         → FastAPI
-        → AgentRuntime (policy, optional LLM loop, fallback, audit)
+        → AgentRuntime (policy, optional LLM tool loop, fallback, audit)
         → Read/Compute tools | Propose tools (DRAFT + manager notify)
 ```
+
+### Ops LLM tool loops (agents 2–8)
+
+When `LLM_API_KEY` / `GOOGLE_API_KEY` is set (and `OPS_PREFER_LLM` is not `false`):
+
+```text
+goal → context pack → multi-step GenAI function calling
+    → allowlisted READ/COMPUTE/PROPOSE tools only
+    → verify proposals (requires_approval, never EXECUTE)
+    → audit (tools_used, proposal summaries, used_fallback)
+```
+
+Implementation:
+
+| Module | Role |
+|--------|------|
+| `runtime/ops_llm.py` | `make_ops_llm_runner`, GenAI function-calling loop, scripted plan for tests |
+| `tools/ops_tools.py` | Shared READ / COMPUTE / PROPOSE tools (`async` → `dict`) |
+| `tools/ops_http.py` | Outbound `AGENT_TOKEN` HTTP helpers |
+| `runtime/wrap.py` | Per-agent allowlists + `run_ops_agent` |
+
+**Stack choice:** Ops use **Google GenAI function calling** for short-lived scheduled sessions (no long-lived ADK chat session). Customer **chat** continues on **Google ADK** `LlmAgent` + `Runner`. Both share HITL policy and audit via `AgentRuntime`.
+
+**Cost control**
+
+- Ops model: `OPS_LLM_MODEL` (falls back to `LLM_MODEL` / Gemini flash family).
+- `prefer_llm` only when a key is present (`ops_prefer_llm()`).
+- Dynamic pricing **pre-gate**: if no overload/underload signal, skip LLM and return quickly.
+- On LLM failure: **rule fallback always runs** (never blank ops).
 
 ## HITL policy
 
@@ -21,6 +50,8 @@ Chat JWT / Trigger API key / APScheduler / RabbitMQ
 
 Cancel, refund, and complaint tools always go through pending-approval backend endpoints.
 
+Pricing agent **never** calls `PATCH /api/menu` — only manager notifications with capped % suggestions.
+
 ## Modules
 
 | Path | Role |
@@ -30,19 +61,21 @@ Cancel, refund, and complaint tools always go through pending-approval backend e
 | `runtime/audit.py` | Structured run logs (no secrets/PII dumps) |
 | `runtime/agent_runtime.py` | Unified `run()` entry |
 | `runtime/wrap.py` | Ops agent helpers + default allowlists |
+| `runtime/ops_llm.py` | Ops multi-step tool loop |
+| `tools/ops_tools.py` | Deterministic ops tools |
 | `tools/backend_tools.py` | Customer chat tools (JWT-bound identity) |
 | `agents/*_agent.py` | Thin public entry + rule fallback body |
 
 ## Agents
 
-1. **Support chat** — `POST /agent/chat` (customer JWT)
-2. **Demand forecast** — cron 2am IST
-3. **Inventory reorder** — every 6h
-4. **Churn prevention** — daily 10am IST
-5. **Review response** — RabbitMQ + manual trigger
-6. **Shift optimisation** — Sunday 8pm IST
-7. **Kitchen coach** — nightly 11pm IST
-8. **Dynamic pricing** — every 30m 9–22 IST (suggest only; never patches prices)
+1. **Support chat** — `POST /agent/chat` (customer JWT); ADK tool loop
+2. **Demand forecast** — cron 2am IST; COMPUTE WMA + optional LLM summary
+3. **Inventory reorder** — every 6h; tool loop: low stock → draft PO → notify
+4. **Churn prevention** — daily 10am IST; segment + draft campaign + notify
+5. **Review response** — RabbitMQ + manual; order context + draft reply notify
+6. **Shift optimisation** — Sunday 8pm IST; staff/forecast → draft shifts
+7. **Kitchen coach** — nightly 11pm IST; metrics → brief notify
+8. **Dynamic pricing** — every 30m 9–22 IST; suggest only; never patches prices
 
 ## Identity
 
@@ -52,14 +85,26 @@ Cancel, refund, and complaint tools always go through pending-approval backend e
 
 ## LLM configuration
 
-- `LLM_MODEL` / `LLM_API_KEY` preferred (provider-agnostic), with `GOOGLE_API_KEY` fallback for existing deploys.
-- Product/docs describe Google ADK + Gemini.
+| Variable | Purpose |
+|----------|---------|
+| `LLM_API_KEY` / `GOOGLE_API_KEY` | Provider key (prefer `LLM_API_KEY`) |
+| `LLM_MODEL` | Chat / default model |
+| `OPS_LLM_MODEL` | Cheaper ops model override |
+| `OPS_PREFER_LLM` | `true`/`false` override; default = key present |
+
+Product/docs describe Google ADK + Gemini. Do not document alternate provider brands in public materials.
 
 ## Fallback
 
-If the LLM path fails, rule-based agents still draft proposals and notifications so operations continue offline from the model provider.
+If the LLM path fails, rule-based agents still draft proposals and notifications so operations continue offline from the model provider. `_runtime.used_fallback` and audit `used_fallback` record which path ran. Manager-facing text includes `rationale` when the LLM path produced proposals.
 
-## Out of scope (this program)
+## Testing
+
+- CI runs without live LLM or backend.
+- Scripted tool plans exercise multi-step inventory + pricing golden paths.
+- Policy tests assert EXECUTE tools never land on allowlists.
+
+## Out of scope
 
 - Auto-execution of prices, POs, or campaigns without a manager
 - Multi-ERP ingest / custom model training
