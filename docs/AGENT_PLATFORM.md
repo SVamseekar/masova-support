@@ -120,7 +120,21 @@ Optional live probes: [SMOKE.md](./SMOKE.md).
 | Idempotency | `runtime/idempotency.py` keys: agent+store+action+hour/date bucket on draft PO, campaign, shifts, price suggest |
 | Audit | agent, trigger, store_id, tools_used, used_fallback, proposal summaries/rationale |
 | Signal gate | Pricing: skip LLM when no overload/underload; inventory: skip when no low stock |
-| Eval | Mocked golden paths in `tests/test_agents.py`, `tests/test_ops_llm_tools.py`, `tests/test_equal_agent_quality.py` |
+| Eval | Mocked golden paths in `tests/test_agents.py`, `tests/test_ops_llm_tools.py`, `tests/test_equal_agent_quality.py`, **`tests/eval/test_industry_eval.py`** |
+
+### Industry eval harness (`tests/eval/`)
+
+Scriptable / mocked (no live LLM or backend). Must stay green in CI:
+
+1. Low stock → draft PO from tool quantities only  
+2. Kitchen overload → price **suggest** only (no menu PATCH)  
+3. Underload near close / no signal → skip suggestions  
+4. 1★ review → draft response notify  
+5. LLM raises → rule fallback still returns ok/draft  
+6. Chat: spoofed customer id ignored (JWT identity binding)  
+7. Cancel/refund copy mentions manager approval  
+8. Idempotency: second draft same key is no-op  
+9. Policy: EXECUTE tools rejected if requested
 
 Agent 8 **never** calls `PATCH /api/menu` — only manager notifications with capped %.
 
