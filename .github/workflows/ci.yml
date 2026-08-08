@@ -1,13 +1,22 @@
+# Required status check name for branch protection: "test" (job id)
 name: CI
 
 on:
   push:
-    branches: [main, "feature/**"]
+    branches: [main, "feature/**", "fix/**", "chore/**", "docs/**", "test/**"]
   pull_request:
     branches: [main]
 
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
 jobs:
   test:
+    name: test
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
