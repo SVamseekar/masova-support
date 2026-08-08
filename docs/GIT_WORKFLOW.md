@@ -67,6 +67,23 @@ Public docs and README describe **Gemini / Google ADK**. Do not put internal pro
 - Runs unit tests with dummy env (no live LLM or platform backend)
 - Concurrency cancels outdated runs on the same ref
 
+## Dependabot
+
+Config: [`.github/dependabot.yml`](../.github/dependabot.yml)
+
+| Ecosystem | Cadence | Grouping |
+|-----------|---------|----------|
+| `github-actions` | Weekly (Monday) | All Actions in one PR |
+| `pip` | Weekly (Monday) | Minor/patch grouped; **majors** open as separate PRs |
+
+- Commit prefix: `chore(deps):` (via `prefix: chore` + `include: scope`)
+- Labels: `dependencies`, plus `github-actions` or `python`
+- Runtime install source of truth: **`requirements.txt`** (CI installs it). `pyproject.toml` is also watched; keep versions aligned when bumping by hand.
+- `google-adk` **major** bumps are ignored by Dependabot — upgrade that package deliberately.
+- Prefer **squash-merge** only after CI `test` is green.
+- Security updates (Dependabot security PRs) should be treated as higher priority than routine version bumps.
+- After changing `dependabot.yml`, close noisy ungrouped PRs; Dependabot will open fresh grouped PRs on the next schedule (or when you re-enable / re-run updates).
+
 ## Stale branches and archives
 
 - Prefer auto-delete on merge; after older merges without auto-delete, remove remote branches only after verifying content is on `main` or intentionally abandoned.
