@@ -31,6 +31,43 @@ Do not claim orders are finalized. Manager approval is required.
 """
 
 
+async def _inventory_pre_gate(request):
+    """Skip LLM when no low-stock items (cheap signal gate)."""
+    forced = (request.context or {}).get("force_low_stock")
+    if forced is False:
+        return {
+            "status": "ok",
+            "summary": "No low stock — skipped LLM",
+            "pos_drafted": 0,
+            "skipped_llm": True,
+            "tools_used": [],
+            "proposals": [],
+        }
+    if forced is True:
+        return None
+    try:
+        from ..tools.ops_tools import list_low_stock
+
+        store_id = request.store_id or ""
+        res = await list_low_stock(store_id)
+        items = res.get("items") or []
+        if res.get("ok") and not items:
+            return {
+                "status": "ok",
+                "summary": "No low stock — skipped LLM",
+                "pos_drafted": 0,
+                "items_checked": 0,
+                "skipped_llm": True,
+                "tools_used": ["list_low_stock"],
+                "proposals": [],
+            }
+        request.context = dict(request.context or {})
+        request.context["low_stock_count"] = len(items)
+    except Exception:
+        return None
+    return None
+
+
 def _inventory_llm_runner():
     from ..runtime.ops_llm import make_ops_llm_runner
     from ..runtime.wrap import AGENT_ALLOWLISTS
@@ -38,6 +75,7 @@ def _inventory_llm_runner():
     return make_ops_llm_runner(
         instruction=INVENTORY_INSTRUCTION,
         tool_names=list(AGENT_ALLOWLISTS["inventory_reorder"]),
+        pre_gate=_inventory_pre_gate,
     )
 
 

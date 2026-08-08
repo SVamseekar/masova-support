@@ -27,6 +27,15 @@ class AuditLogger:
         self.records: list[dict[str, Any]] = []
 
     def log_run(self, result: AgentRunResult) -> dict[str, Any]:
+        proposal_summaries = [
+            {
+                "type": p.type,
+                "summary": (p.summary or "")[:200],
+                "rationale": (p.rationale or "")[:200],
+                "store_id": p.store_id,
+            }
+            for p in result.proposals[:20]
+        ]
         record = {
             "event": "agent_run",
             "run_id": result.run_id,
@@ -38,6 +47,7 @@ class AuditLogger:
             "tools_used": list(result.tools_used),
             "proposal_count": len(result.proposals),
             "proposal_types": [p.type for p in result.proposals],
+            "proposal_summaries": proposal_summaries,
             "summary": (result.summary or "")[:500],
             "latency_ms": round(result.latency_ms, 2),
             "error": result.error,
