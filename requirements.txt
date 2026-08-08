@@ -3,8 +3,8 @@
 # Keep lower bounds in sync with pyproject.toml [project].dependencies pins.
 
 # Core Dependencies
-# ADK <1.28.1 vulnerable; ADK >=1.37 needs google-genai 2.x — stay on 1.28–1.36 line
-google-adk>=1.28.1,<1.37
+# ADK <1.28.1 vulnerable; ADK >=1.36 needs google-genai 2.x — stay on 1.28–1.35 line
+google-adk>=1.28.1,<1.36
 fastapi>=0.124.1
 uvicorn[standard]>=0.34.0
 google-genai>=1.72.0,<2
