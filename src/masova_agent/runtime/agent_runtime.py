@@ -21,6 +21,7 @@ from .models import (
 )
 from .policy import PolicyEngine
 from . import proposal_store
+from . import metrics
 
 logger = logging.getLogger(__name__)
 
@@ -145,6 +146,13 @@ class AgentRuntime:
             latency_ms=latency_ms,
         )
         self.audit.log_run(result)
+        metrics.record_run(
+            agent=result.agent_name,
+            used_fallback=result.used_fallback,
+            proposal_count=len(result.proposals),
+            llm_error=bool(result.error and str(result.error).startswith("llm_failed")),
+            status=result.status,
+        )
         return result
 
     async def _call_maybe_async(self, fn, *args) -> Any:
