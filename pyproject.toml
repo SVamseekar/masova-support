@@ -24,8 +24,10 @@ classifiers = [
 ]
 
 dependencies = [
-    "google-adk==1.25.0",
-    "google-genai==1.63.0",
+    # Security floor: google-adk <1.28.1 is vulnerable (code injection).
+    # Stay on 1.28–1.36 (needs google-genai 1.x); 1.37+ needs genai 2.x.
+    "google-adk==1.35.2",
+    "google-genai==1.75.0",
     "httpx==0.28.1",
     "python-dotenv==1.2.2",
 ]

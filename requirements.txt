@@ -1,13 +1,15 @@
 # MaSoVa Agent Dependencies
 # Install with: pip install -r requirements.txt
+# Keep lower bounds in sync with pyproject.toml [project].dependencies pins.
 
 # Core Dependencies
-google-adk>=1.25.0
+# ADK <1.28.1 vulnerable; ADK >=1.37 needs google-genai 2.x — stay on 1.28–1.36 line
+google-adk>=1.28.1,<1.37
 fastapi>=0.124.1
 uvicorn[standard]>=0.34.0
-google-genai>=1.63.0
+google-genai>=1.72.0,<2
 httpx>=0.28.1
-python-dotenv>=1.2.1
+python-dotenv>=1.2.2
 pyjwt>=2.10.1
 
 # Google Cloud Dependencies (installed automatically by google-adk)
