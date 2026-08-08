@@ -5,6 +5,22 @@ All notable changes to the MaSoVa Agent project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- Ops multi-step GenAI tool loops (`runtime/ops_llm.py`, `tools/ops_tools.py`) for agents 2–8
+- `docs/CAPABILITY_MAP.md` — full tool ↔ HTTP ↔ platform service map
+- Expanded backend contract fixtures + tests (shared-models order statuses, inventory, PO, campaign, shifts)
+- Idempotency keys for draft PO / campaign / shifts / price suggestions
+- Canonical **ActionProposal** + local `proposal_store` + `GET/POST /agent/proposals*`
+- Metrics hooks (`runs_total`, `fallback_total`, `proposals_total`, `llm_error_total`)
+- `docs/RUNBOOK.md`, `docs/SMOKE.md`, `docs/SMOKE_CHECKLIST.md`, `scripts/smoke_backend.sh`
+- Industry eval harness `tests/eval/test_industry_eval.py` (CI)
+
+### Changed
+- Equal quality bar documented for all 8 agents (fallback, audit, signal gates)
+- Production env budgets: `OPS_MAX_TOOL_CALLS`, `OPS_CONTEXT_CHARS`, `OPS_PREFER_LLM`, `OPS_LLM_MODEL`
+
 ## [0.4.0] - 2026-08-08
 
 ### Added

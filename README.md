@@ -13,7 +13,12 @@ AI-powered customer support and ops agents for the MaSoVa restaurant platform, b
 - **Human-in-the-loop** — agents **propose** (DRAFT + manager notify); they do not auto-execute prices, POs, or refunds
 - **Shared AgentRuntime** — policy, audit logs, rule-based fallbacks when the model is unavailable
 
-See [docs/AGENT_PLATFORM.md](docs/AGENT_PLATFORM.md) for architecture.
+See [docs/AGENT_PLATFORM.md](docs/AGENT_PLATFORM.md) for architecture,  
+[docs/CAPABILITY_MAP.md](docs/CAPABILITY_MAP.md) for tool ↔ platform APIs,  
+[docs/RUNBOOK.md](docs/RUNBOOK.md) for operations, and  
+[docs/SMOKE_CHECKLIST.md](docs/SMOKE_CHECKLIST.md) for live probes.
+
+**Design:** industry-style vertical agents — secure identity, tool-grounded numbers, human approval proposals, rule fallbacks, contract-mapped APIs, audited runs, CI evals — not an omniscient autonomous platform brain.
 
 ## Quick start
 
@@ -62,13 +67,14 @@ If a `Dockerfile` is present in the repo, build/run via your standard image flow
 src/masova_agent/
   agent.py              # Support chat ADK agent (canonical entry)
   auth.py               # JWT + trigger API key
-  main.py               # FastAPI app
-  runtime/              # AgentRuntime, policy, audit
+  main.py               # FastAPI app (+ proposals list/resolve)
+  runtime/              # AgentRuntime, policy, audit, ops_llm, proposals, metrics
   agents/               # Ops agents (thin wrappers + rule fallbacks)
   tools/backend_tools.py
+  tools/ops_tools.py    # Ops READ/COMPUTE/PROPOSE tools
   scheduler/            # APScheduler (shares FastAPI event loop)
-tests/
-docs/AGENT_PLATFORM.md
+tests/                  # unit + tests/eval industry harness
+docs/                   # AGENT_PLATFORM, CAPABILITY_MAP, RUNBOOK, SMOKE*
 .github/workflows/ci.yml
 config/env.example
 ```
