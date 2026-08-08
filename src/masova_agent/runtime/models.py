@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field, asdict
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Awaitable, Callable, Optional
 import uuid
@@ -17,6 +18,13 @@ class RiskTier(str, Enum):
     EXECUTE = "EXECUTE"  # never on agent allowlists
 
 
+class ProposalStatus(str, Enum):
+    PENDING = "PENDING"
+    APPROVED = "APPROVED"
+    REJECTED = "REJECTED"
+    EXPIRED = "EXPIRED"
+
+
 @dataclass(frozen=True)
 class ToolRisk:
     """Registry entry for a named tool."""
@@ -26,12 +34,17 @@ class ToolRisk:
     description: str = ""
 
 
+def _utc_now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
 @dataclass
 class ActionProposal:
     """
-    High-risk outcome that requires manager approval.
+    Canonical high-risk outcome that requires manager approval.
 
     Agents never auto-write final business state; they emit proposals.
+    Final execute still happens in platform UI/backend after approval.
     """
 
     type: str
@@ -42,11 +55,57 @@ class ActionProposal:
     payload: dict[str, Any] = field(default_factory=dict)
     requires_approval: bool = True
     proposal_id: str = field(default_factory=lambda: str(uuid.uuid4()))
+    agent: str = ""
+    status: ProposalStatus = ProposalStatus.PENDING
+    created_at: str = field(default_factory=_utc_now_iso)
+    idempotency_key: str = ""
+    resolution_note: str = ""
+    resolved_at: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         d = asdict(self)
         d["risk"] = self.risk.value if isinstance(self.risk, RiskTier) else self.risk
+        d["status"] = (
+            self.status.value if isinstance(self.status, ProposalStatus) else self.status
+        )
         return d
+
+    @classmethod
+    def from_dict(cls, item: dict[str, Any], *, agent: str = "") -> "ActionProposal":
+        risk = item.get("risk", RiskTier.PROPOSE)
+        if isinstance(risk, str):
+            try:
+                risk = RiskTier(risk)
+            except ValueError:
+                risk = RiskTier.PROPOSE
+        status = item.get("status", ProposalStatus.PENDING)
+        if isinstance(status, str):
+            try:
+                status = ProposalStatus(status)
+            except ValueError:
+                status = ProposalStatus.PENDING
+        kwargs: dict[str, Any] = {
+            "type": str(item.get("type", "UNKNOWN")),
+            "store_id": str(item.get("store_id") or ""),
+            "summary": str(item.get("summary") or ""),
+            "rationale": str(item.get("rationale") or ""),
+            "risk": risk if isinstance(risk, RiskTier) else RiskTier.PROPOSE,
+            "payload": dict(item.get("payload") or {}),
+            "requires_approval": bool(item.get("requires_approval", True)),
+            "agent": str(item.get("agent") or agent or ""),
+            "status": status if isinstance(status, ProposalStatus) else ProposalStatus.PENDING,
+            "created_at": str(item.get("created_at") or _utc_now_iso()),
+            "idempotency_key": str(
+                item.get("idempotency_key")
+                or (item.get("payload") or {}).get("idempotency_key")
+                or ""
+            ),
+            "resolution_note": str(item.get("resolution_note") or ""),
+            "resolved_at": str(item.get("resolved_at") or ""),
+        }
+        if item.get("proposal_id"):
+            kwargs["proposal_id"] = str(item["proposal_id"])
+        return cls(**kwargs)
 
 
 # Optional async/sync fallback producing a result dict and optional proposals.

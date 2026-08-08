@@ -82,3 +82,7 @@ CLAUDE.md
 
 # Local agent scratch
 masova_agent_legacy/
+
+# Local durable proposal store (Phase C)
+data/
+

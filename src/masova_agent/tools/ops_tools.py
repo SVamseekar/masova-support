@@ -32,21 +32,25 @@ def _proposal(
     rationale: str,
     payload: Optional[dict] = None,
     idempotency_key: str = "",
+    agent: str = "",
 ) -> dict[str, Any]:
-    out = {
-        "type": type_,
-        "store_id": store_id or "",
-        "summary": summary,
-        "rationale": rationale,
-        "risk": "PROPOSE",
-        "payload": payload or {},
-        "requires_approval": True,
-    }
+    """Canonical ActionProposal-shaped dict (see runtime.models.ActionProposal)."""
+    from ..runtime.models import ActionProposal
+
+    p = ActionProposal(
+        type=type_,
+        store_id=store_id or "",
+        summary=summary,
+        rationale=rationale,
+        payload=payload or {},
+        requires_approval=True,
+        agent=agent,
+        idempotency_key=idempotency_key or "",
+    )
     if idempotency_key:
-        out["idempotency_key"] = idempotency_key
-        out["payload"] = dict(out["payload"])
-        out["payload"]["idempotency_key"] = idempotency_key
-    return out
+        p.payload = dict(p.payload)
+        p.payload["idempotency_key"] = idempotency_key
+    return p.to_dict()
 
 
 def _require_token() -> Optional[dict]:
@@ -576,6 +580,8 @@ async def notify_managers(
     notification_type: str = "AGENT_ALERT",
     priority: str = "MEDIUM",
     rationale: str = "",
+    proposal_id: str = "",
+    proposal_summary: str = "",
 ) -> dict[str, Any]:
     """Notify store managers (PROPOSE side-effect: notification only)."""
     err = _require_token()
@@ -584,8 +590,12 @@ async def notify_managers(
     if not store_id or not message:
         return {"ok": False, "error": "store_id and message required"}
     full_message = message
+    if proposal_id and proposal_id not in full_message:
+        full_message = f"{full_message}\n\nproposal_id={proposal_id}"
+    if proposal_summary and proposal_summary not in full_message:
+        full_message = f"{full_message}\nSummary: {proposal_summary}"
     if rationale and rationale not in message:
-        full_message = f"{message}\n\nRationale: {rationale}"
+        full_message = f"{full_message}\n\nRationale: {rationale}"
 
     async with httpx.AsyncClient(timeout=20.0) as client:
         st, body = await get_json(
@@ -599,16 +609,24 @@ async def notify_managers(
             mid = manager.get("id")
             if not mid:
                 continue
+            notif_body: dict[str, Any] = {
+                "userId": mid,
+                "type": notification_type,
+                "title": title,
+                "message": full_message,
+                "priority": priority,
+            }
+            if proposal_id:
+                notif_body["data"] = {
+                    "proposal_id": proposal_id,
+                    "summary": proposal_summary or title,
+                    "rationale": rationale,
+                    "requires_approval": True,
+                }
             pst, _ = await post_json(
                 client,
                 "/api/notifications",
-                {
-                    "userId": mid,
-                    "type": notification_type,
-                    "title": title,
-                    "message": full_message,
-                    "priority": priority,
-                },
+                notif_body,
             )
             if pst in (200, 201):
                 sent += 1
@@ -685,20 +703,13 @@ async def propose_price_suggestion(
         priority = "MEDIUM"
         title = "Price Discount Suggestion"
 
-    notify = await notify_managers(
-        store_id=store_id,
-        message=message,
-        title=title,
-        notification_type="DYNAMIC_PRICING_SUGGESTION",
-        priority=priority,
-        rationale=rationale or f"{direction} {pct}% on tool-selected items",
-    )
     proposal = _proposal(
         "SUGGEST_PRICE_ADJUSTMENT",
         store_id,
         summary=f"{direction} {pct:.0f}% on {names_str[:80]}",
         rationale=rationale or message,
         idempotency_key=idem_key,
+        agent="dynamic_pricing",
         payload={
             "direction": direction,
             "percent": pct,
@@ -709,14 +720,26 @@ async def propose_price_suggestion(
             "max_increase_pct": PRICE_INCREASE_PCT_MAX,
             "max_discount_pct": PRICE_DISCOUNT_PCT_MAX,
             "patches_menu": False,
-            "notify_sent": notify.get("sent", 0),
         },
     )
+    notify = await notify_managers(
+        store_id=store_id,
+        message=message,
+        title=title,
+        notification_type="DYNAMIC_PRICING_SUGGESTION",
+        priority=priority,
+        rationale=rationale or f"{direction} {pct}% on tool-selected items",
+        proposal_id=proposal.get("proposal_id", ""),
+        proposal_summary=proposal.get("summary", ""),
+    )
+    proposal["payload"] = dict(proposal.get("payload") or {})
+    proposal["payload"]["notify_sent"] = notify.get("sent", 0)
     return {
         "ok": bool(notify.get("ok")),
         "proposal": proposal,
         "sent": notify.get("sent", 0),
         "patches_menu": False,
+        "idempotency_key": idem_key,
     }
 
 

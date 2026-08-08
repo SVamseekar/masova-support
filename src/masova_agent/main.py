@@ -192,3 +192,52 @@ async def trigger_kitchen_coach():
 async def trigger_dynamic_pricing():
     from .agents.dynamic_pricing_agent import run_dynamic_pricing
     return await run_dynamic_pricing()
+
+
+# ---------------------------------------------------------------------------
+# ActionProposal list / resolve (manager outcome recording — not final execute)
+# ---------------------------------------------------------------------------
+
+class ResolveProposalBody(BaseModel):
+    status: str  # APPROVED | REJECTED
+    note: Optional[str] = None
+
+
+@app.get("/agent/proposals", dependencies=[Depends(verify_trigger_api_key)])
+async def list_action_proposals(
+    storeId: Optional[str] = None,
+    status: Optional[str] = None,
+    agent: Optional[str] = None,
+    limit: int = 100,
+):
+    """
+    List ActionProposals stored by this service.
+
+    Final business execute still happens in platform UI/backend after a manager
+    approves there; this endpoint records local audit outcomes.
+    """
+    from .runtime import proposal_store
+
+    return {
+        "proposals": proposal_store.list_proposals(
+            store_id=storeId, status=status, agent=agent, limit=limit
+        )
+    }
+
+
+@app.post(
+    "/agent/proposals/{proposal_id}/resolve",
+    dependencies=[Depends(verify_trigger_api_key)],
+)
+async def resolve_action_proposal(proposal_id: str, body: ResolveProposalBody):
+    from .runtime import proposal_store
+
+    try:
+        rec = proposal_store.resolve_proposal(
+            proposal_id, body.status, note=body.note or ""
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    if not rec:
+        raise HTTPException(status_code=404, detail="proposal not found")
+    return rec
