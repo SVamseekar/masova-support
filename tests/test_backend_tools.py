@@ -9,6 +9,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 import pytest
 from unittest.mock import patch, MagicMock
+from httpx import HTTPStatusError, Request, Response
 
 from masova_agent.auth import AgentIdentity, bind_identity, reset_identity
 
@@ -32,9 +33,14 @@ def _mock_get(status_code: int, json_body: dict):
     resp = MagicMock()
     resp.status_code = status_code
     resp.json.return_value = json_body
-    resp.raise_for_status = MagicMock(
-        side_effect=None if status_code < 400 else Exception(f"HTTP {status_code}")
-    )
+    if status_code >= 400:
+        request = Request("GET", "http://test")
+        response = Response(status_code, request=request)
+        resp.raise_for_status = MagicMock(
+            side_effect=HTTPStatusError(f"HTTP {status_code}", request=request, response=response)
+        )
+    else:
+        resp.raise_for_status = MagicMock(return_value=None)
     return resp
 
 
@@ -42,9 +48,14 @@ def _mock_post(status_code: int, json_body: dict):
     resp = MagicMock()
     resp.status_code = status_code
     resp.json.return_value = json_body
-    resp.raise_for_status = MagicMock(
-        side_effect=None if status_code < 400 else Exception(f"HTTP {status_code}")
-    )
+    if status_code >= 400:
+        request = Request("POST", "http://test")
+        response = Response(status_code, request=request)
+        resp.raise_for_status = MagicMock(
+            side_effect=HTTPStatusError(f"HTTP {status_code}", request=request, response=response)
+        )
+    else:
+        resp.raise_for_status = MagicMock(return_value=None)
     return resp
 
 
@@ -69,16 +80,18 @@ class TestGetOrderStatus:
 
     def test_unknown_order_returns_friendly_message(self):
         from masova_agent.tools.backend_tools import get_order_status
-        from httpx import HTTPStatusError, Request, Response
         with patch("masova_agent.tools.backend_tools.httpx.get") as mock_get:
-            mock_resp = MagicMock()
-            mock_resp.raise_for_status.side_effect = HTTPStatusError(
-                "404", request=MagicMock(), response=MagicMock(status_code=404)
-            )
-            mock_resp.status_code = 404
-            mock_get.return_value = mock_resp
+            mock_get.return_value = _mock_get(404, {})
             result = get_order_status("ORD-MISSING")
         assert "couldn't find" in result.lower() or "error" in result.lower()
+
+    def test_forbidden_returns_user_friendly_denial(self):
+        from masova_agent.tools.backend_tools import get_order_status
+        with patch("masova_agent.tools.backend_tools.httpx.get") as mock_get:
+            mock_get.return_value = _mock_get(403, {"message": "Forbidden"})
+            result = get_order_status("ORD-OTHER")
+        assert "don't have permission" in result.lower() or "doesn't belong" in result.lower()
+        assert "HTTP 403" not in result
 
     def test_delivered_order(self):
         from masova_agent.tools.backend_tools import get_order_status
@@ -119,17 +132,22 @@ class TestGetMenuItems:
             })
             result = get_menu_items("store-1")
         assert "Masala Dosa" in result
-        assert "₹120" in result
+        assert "120" in result or "1.20" in result
         assert "Filter Coffee" in result
 
-    def test_category_filter_passed(self):
+    def test_category_filter_client_side(self):
         from masova_agent.tools.backend_tools import get_menu_items
         with patch("masova_agent.tools.backend_tools.httpx.get") as mock_get:
-            mock_get.return_value = _mock_get(200, {"content": []})
-            get_menu_items("store-1", category="biryani")
-            # params is always passed as a keyword argument by _get()
+            mock_get.return_value = _mock_get(200, {
+                "content": [
+                    {"name": "Chicken Biryani", "category": "BIRYANI", "basePrice": 15},
+                    {"name": "Filter Coffee", "category": "BEVERAGES", "basePrice": 3},
+                ]
+            })
+            result = get_menu_items("store-1", category="biryani")
             params = mock_get.call_args.kwargs.get("params", {})
-            assert params.get("category") == "BIRYANI"
+            assert params.get("storeId") == "store-1"
+            assert "Chicken Biryani" in result
 
     def test_empty_menu_returns_friendly_message(self):
         from masova_agent.tools.backend_tools import get_menu_items
@@ -151,7 +169,7 @@ class TestGetMenuItems:
 # ---------------------------------------------------------------------------
 
 class TestGetStoreHours:
-    def test_open_store(self):
+    def test_open_store_flat_shape(self):
         from masova_agent.tools.backend_tools import get_store_hours
         with patch("masova_agent.tools.backend_tools.httpx.get") as mock_get:
             mock_get.return_value = _mock_get(200, {
@@ -164,6 +182,19 @@ class TestGetStoreHours:
         assert "OPEN" in result
         assert "09:00" in result
         assert "22:00" in result
+
+    def test_active_store_nested_config(self):
+        from masova_agent.tools.backend_tools import get_store_hours
+        with patch("masova_agent.tools.backend_tools.httpx.get") as mock_get:
+            mock_get.return_value = _mock_get(200, {
+                "name": "MaSoVa Banjara Hills",
+                "status": "ACTIVE",
+                "operatingConfig": {"openingTime": "10:00", "closingTime": "23:00"},
+                "currency": "EUR",
+            })
+            result = get_store_hours("store-2")
+        assert "ACTIVE" in result
+        assert "10:00" in result
 
     def test_closed_store(self):
         from masova_agent.tools.backend_tools import get_store_hours
@@ -193,9 +224,11 @@ class TestSubmitComplaint:
     def test_valid_complaint_returns_ticket(self):
         from masova_agent.tools.backend_tools import submit_complaint
         with patch("masova_agent.tools.backend_tools.httpx.post") as mock_post:
-            mock_post.return_value = _mock_post(201, {"id": "TKT-999"})
+            mock_post.return_value = _mock_post(201, {"id": "TKT-999", "status": "PENDING"})
             result = submit_complaint("ORD-001", "Food was cold and arrived late")
-        assert "TKT-999" in result or "submitted" in result.lower()
+        assert "TKT-999" in result
+        assert "manager review" in result.lower()
+        assert "pending" in result.lower()
 
     def test_uses_authenticated_customer_id_not_arg(self):
         """submit_complaint must bind to the verified identity, not any caller-supplied id."""
@@ -302,10 +335,10 @@ class TestCancelOrder:
             mock_get.return_value = _mock_get(200, {"status": "RECEIVED"})
             mock_post.return_value = _mock_post(200, {"status": "PENDING_APPROVAL"})
             result = cancel_order("ORD-001", "Changed my mind")
-        # Must go through the approval-gated endpoint, not immediate cancellation
         post_url = mock_post.call_args.args[0] if mock_post.call_args.args else mock_post.call_args.kwargs.get("url", "")
         assert "cancel-request" in post_url
-        assert "pending" in result.lower() and "approval" in result.lower()
+        assert "manager review" in result.lower() or ("pending" in result.lower() and "approval" in result.lower())
+        assert "still active" in result.lower() or "approves" in result.lower()
 
     def test_order_already_preparing_cannot_cancel(self):
         from masova_agent.tools.backend_tools import cancel_order
@@ -313,6 +346,16 @@ class TestCancelOrder:
             mock_get.return_value = _mock_get(200, {"status": "PREPARING"})
             result = cancel_order("ORD-002", "Changed my mind")
         assert "cannot be cancelled" in result.lower() or "already" in result.lower()
+
+    def test_forbidden_cancel_is_friendly(self):
+        from masova_agent.tools.backend_tools import cancel_order
+        with patch("masova_agent.tools.backend_tools.httpx.get") as mock_get, \
+             patch("masova_agent.tools.backend_tools.httpx.post") as mock_post:
+            mock_get.return_value = _mock_get(200, {"status": "RECEIVED"})
+            mock_post.return_value = _mock_post(403, {})
+            result = cancel_order("ORD-001", "Changed my mind")
+        assert "don't have permission" in result.lower() or "doesn't belong" in result.lower()
+        assert "HTTP 403" not in result
 
     def test_short_reason_rejected(self):
         from masova_agent.tools.backend_tools import cancel_order
@@ -328,9 +371,14 @@ class TestRequestRefund:
     def test_valid_refund_request(self):
         from masova_agent.tools.backend_tools import request_refund
         with patch("masova_agent.tools.backend_tools.httpx.post") as mock_post:
-            mock_post.return_value = _mock_post(201, {"refundId": "REF-123"})
+            mock_post.return_value = _mock_post(201, {
+                "refundId": "REF-123",
+                "status": "PENDING_APPROVAL",
+            })
             result = request_refund("ORD-001", "Wrong items delivered")
         assert "REF-123" in result or "refund" in result.lower()
+        assert "pending manager approval" in result.lower()
+        assert "no refund has been processed" in result.lower()
 
     def test_short_reason_rejected(self):
         from masova_agent.tools.backend_tools import request_refund

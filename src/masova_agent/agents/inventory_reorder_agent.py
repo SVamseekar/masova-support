@@ -14,7 +14,19 @@ from typing import Dict, List, Any
 logger = logging.getLogger(__name__)
 
 
-async def run_inventory_reorder() -> Dict[str, Any]:
+
+
+async def run_inventory_reorder():
+    """Public entry — routes through AgentRuntime with rule fallback."""
+    from ..runtime.wrap import run_ops_agent
+    return await run_ops_agent(
+        "inventory_reorder",
+        "scheduled",
+        _rule_run_inventory_reorder,
+        goal="Run inventory_reorder",
+    )
+
+async def _rule_run_inventory_reorder() -> Dict[str, Any]:
     """Main entry point. Returns summary of POs drafted."""
     from ..utils.config import get_config
     config = get_config()

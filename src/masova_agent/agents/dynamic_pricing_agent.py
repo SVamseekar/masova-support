@@ -22,7 +22,19 @@ STORE_CLOSE_HOUR = 22             # 10pm IST — don't suggest discounts if <2h 
 MIN_HOURS_BEFORE_CLOSE = 2
 
 
-async def run_dynamic_pricing() -> Dict[str, Any]:
+
+
+async def run_dynamic_pricing():
+    """Public entry — routes through AgentRuntime with rule fallback."""
+    from ..runtime.wrap import run_ops_agent
+    return await run_ops_agent(
+        "dynamic_pricing",
+        "scheduled",
+        _rule_run_dynamic_pricing,
+        goal="Run dynamic_pricing",
+    )
+
+async def _rule_run_dynamic_pricing() -> Dict[str, Any]:
     """Suggest price adjustments based on real-time demand vs capacity."""
     from ..utils.config import get_config
     config = get_config()

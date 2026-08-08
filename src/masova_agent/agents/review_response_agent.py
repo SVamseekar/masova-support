@@ -28,7 +28,25 @@ Maximum 100 words. No marketing language. No "We value your feedback" cliches.
 """
 
 
+
+
 async def draft_review_response(review_data: Dict[str, Any]) -> Dict[str, Any]:
+    """Public entry — routes through AgentRuntime with rule/LLM fallback inside rule path."""
+    from ..runtime.wrap import run_ops_agent
+
+    async def _fb():
+        return await _rule_draft_review_response(review_data)
+
+    return await run_ops_agent(
+        "review_response",
+        "event",
+        _fb,
+        store_id=review_data.get("storeId"),
+        goal="Draft manager reply for low-rating review",
+        context={"review_id": review_data.get("reviewId"), "rating": review_data.get("rating")},
+    )
+
+async def _rule_draft_review_response(review_data: Dict[str, Any]) -> Dict[str, Any]:
     """Generate a draft response for a low-rating review."""
     rating = review_data.get("rating", 5)
     if rating > 3:

@@ -35,9 +35,13 @@ _session_service = RedisSessionService(redis_url=_redis_url)
 
 _created_sessions: dict[str, str] = {}  # session_key -> actual session_id
 
+def _resolve_model() -> str:
+    return os.getenv("LLM_MODEL", os.getenv("GOOGLE_MODEL", "gemini-2.5-flash"))
+
+
 root_agent = LlmAgent(
     name="MaSoVa_Support",
-    model="gemini-2.5-flash",
+    model=_resolve_model(),
     instruction="""You are MaSoVa's friendly and efficient customer support assistant.
 
 MaSoVa is a multi-branch restaurant chain serving South Indian, North Indian,
@@ -102,29 +106,73 @@ async def send_message_async(
     user_id: str = "anonymous",
     session_id: str = "default",
 ) -> tuple[str, str]:
-    """Returns (reply_text, actual_session_id) so callers can persist turns correctly."""
+    """Returns (reply_text, actual_session_id) so callers can persist turns correctly.
+
+    Routes through AgentRuntime for audit/HITL policy. ADK tool loop is the
+    primary path; on total failure a safe fallback message is returned.
+    """
+    from .runtime.wrap import run_ops_agent, AGENT_ALLOWLISTS
+
     actual_session_id = await _ensure_session(user_id, session_id)
-    runner = Runner(
-        agent=root_agent,
-        app_name="masova_support",
-        session_service=_adk_session_service,
+
+    async def _adk_path():
+        runner = Runner(
+            agent=root_agent,
+            app_name="masova_support",
+            session_service=_adk_session_service,
+        )
+        user_content = genai_types.Content(
+            role="user",
+            parts=[genai_types.Part(text=message)],
+        )
+        response_text = ""
+        for event in runner.run(
+            user_id=user_id,
+            session_id=actual_session_id,
+            new_message=user_content,
+        ):
+            if hasattr(event, "is_final_response") and event.is_final_response():
+                if event.content and event.content.parts:
+                    for part in event.content.parts:
+                        if hasattr(part, "text") and part.text:
+                            response_text += part.text
+        reply = response_text.strip()
+        return {
+            "status": "ok",
+            "reply": reply,
+            "summary": (reply[:200] if reply else "empty"),
+            "session_id": actual_session_id,
+            "tools_used": list(AGENT_ALLOWLISTS.get("support_chat", [])),
+        }
+
+    async def _fallback():
+        return {
+            "status": "ok",
+            "reply": (
+                "I'm having trouble reaching our systems right now. "
+                "Please try again shortly, or contact support@masova.com / 1800-MASOVA."
+            ),
+            "summary": "chat_fallback",
+            "session_id": actual_session_id,
+        }
+
+    # Prefer ADK (llm_runner); fallback only if ADK raises.
+    result_payload = await run_ops_agent(
+        "support_chat",
+        "chat",
+        _fallback,
+        goal=message[:500],
+        context={"user_id": user_id, "session_id": actual_session_id},
+        llm_runner=lambda _req: _adk_path(),
+        prefer_llm=True,
     )
-    user_content = genai_types.Content(
-        role="user",
-        parts=[genai_types.Part(text=message)],
-    )
-    response_text = ""
-    for event in runner.run(
-        user_id=user_id,
-        session_id=actual_session_id,
-        new_message=user_content,
-    ):
-        if hasattr(event, "is_final_response") and event.is_final_response():
-            if event.content and event.content.parts:
-                for part in event.content.parts:
-                    if hasattr(part, "text") and part.text:
-                        response_text += part.text
-    return response_text.strip(), actual_session_id
+    reply = str(result_payload.get("reply") or "").strip()
+    if not reply:
+        reply = (
+            "I'm having trouble reaching our systems right now. "
+            "Please try again shortly, or contact support@masova.com / 1800-MASOVA."
+        )
+    return reply, actual_session_id
 
 
 def send_message(

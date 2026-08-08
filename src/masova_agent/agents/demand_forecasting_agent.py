@@ -20,7 +20,19 @@ def _get_config():
     return get_config()
 
 
-async def run_demand_forecast() -> Dict[str, Any]:
+
+
+async def run_demand_forecast():
+    """Public entry — routes through AgentRuntime with rule fallback."""
+    from ..runtime.wrap import run_ops_agent
+    return await run_ops_agent(
+        "demand_forecast",
+        "scheduled",
+        _rule_run_demand_forecast,
+        goal="Run demand_forecast",
+    )
+
+async def _rule_run_demand_forecast() -> Dict[str, Any]:
     """Main entry point — called by APScheduler nightly at 2am."""
     config = _get_config()
     backend_url = config.backend_url
