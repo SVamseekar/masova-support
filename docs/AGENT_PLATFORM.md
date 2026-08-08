@@ -104,6 +104,11 @@ If the LLM path fails, rule-based agents still draft proposals and notifications
 - Scripted tool plans exercise multi-step inventory + pricing golden paths.
 - Policy tests assert EXECUTE tools never land on allowlists.
 
+## Capability map
+
+Full tool ↔ API ↔ service ↔ risk mapping: [CAPABILITY_MAP.md](./CAPABILITY_MAP.md).  
+Optional live probes: [SMOKE.md](./SMOKE.md).
+
 ## Out of scope
 
 - Auto-execution of prices, POs, or campaigns without a manager
