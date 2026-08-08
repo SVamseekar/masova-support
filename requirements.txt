@@ -2,12 +2,12 @@
 # Install with: pip install -r requirements.txt
 
 # Core Dependencies
-google-adk>=1.25.0
+google-adk>=1.37.0
 fastapi>=0.124.1
 uvicorn[standard]>=0.34.0
 google-genai>=1.63.0
 httpx>=0.28.1
-python-dotenv>=1.2.1
+python-dotenv>=1.2.2
 pyjwt>=2.10.1
 
 # Google Cloud Dependencies (installed automatically by google-adk)
@@ -16,7 +16,7 @@ google-auth>=2.48.0
 googleapis-common-protos>=1.72.0
 
 redis==5.2.1
-apscheduler==3.10.4
+apscheduler==3.11.3
 aio-pika==9.4.1
 
 # Optional: Development Dependencies
