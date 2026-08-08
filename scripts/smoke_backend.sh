@@ -19,7 +19,15 @@ sk() { note "SKIP: $*"; skip=$((skip + 1)); }
 bad() { note "FAIL: $*"; fail=$((fail + 1)); }
 
 code_for() {
-  curl -s -o /dev/null -w "%{http_code}" --connect-timeout 3 --max-time 8 "$@" 2>/dev/null || echo "000"
+  local code
+  code=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 3 --max-time 8 "$@" 2>/dev/null) || true
+  # curl may print 000 on connect fail; normalize multi-digit glitches
+  if [[ -z "$code" || "$code" == "000" || "$code" == "000000" ]]; then
+    echo "000"
+  else
+    # take last 3 digits if somehow longer
+    echo "${code: -3}"
+  fi
 }
 
 note "BACKEND_URL=$BACKEND_URL SUPPORT_URL=$SUPPORT_URL"
