@@ -76,3 +76,8 @@ updates:
       # Dev formatters: major black jumps are noisy and non-runtime
       - dependency-name: "black"
         update-types: ["version-update:semver-major"]
+      # ADK 1.37+ requires google-genai 2.x — upgrade only as a coordinated manual PR
+      - dependency-name: "google-adk"
+        versions: [">=1.37.0"]
+      - dependency-name: "google-genai"
+        versions: [">=2.0.0"]
