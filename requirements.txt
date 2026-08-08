@@ -17,8 +17,8 @@ google-api-core>=2.29.0
 google-auth>=2.48.0
 googleapis-common-protos>=1.72.0
 
-redis==5.2.1
-apscheduler==3.10.4
+redis==5.3.1
+apscheduler==3.11.3
 aio-pika==9.4.1
 
 # Optional: Development Dependencies
