@@ -47,7 +47,23 @@ def ops_prefer_llm() -> bool:
     return bool(llm_api_key())
 
 
-def _json_safe(obj: Any, limit: int = 8000) -> str:
+def _context_char_limit() -> int:
+    try:
+        return max(1000, int(os.getenv("OPS_CONTEXT_CHARS", "8000")))
+    except ValueError:
+        return 8000
+
+
+def _default_max_tool_calls() -> int:
+    try:
+        return max(1, min(50, int(os.getenv("OPS_MAX_TOOL_CALLS", "12"))))
+    except ValueError:
+        return 12
+
+
+def _json_safe(obj: Any, limit: int | None = None) -> str:
+    if limit is None:
+        limit = _context_char_limit()
     try:
         s = json.dumps(obj, default=str)
     except Exception:
@@ -110,7 +126,7 @@ async def run_scripted_tool_loop(
     allowed = set(request.allowed_tools or [])
     tools_used: list[str] = []
     tool_results: list[dict[str, Any]] = []
-    max_calls = request.max_tool_calls or 12
+    max_calls = request.max_tool_calls or _default_max_tool_calls()
 
     for step in plan[:max_calls]:
         name = step.get("tool") or step.get("name")
@@ -202,7 +218,7 @@ async def run_genai_tool_loop(
 
     client = genai.Client(api_key=key)
     model_id = model or ops_model_name()
-    max_calls = request.max_tool_calls or 12
+    max_calls = request.max_tool_calls or _default_max_tool_calls()
 
     context_pack = {
         "goal": request.goal,
