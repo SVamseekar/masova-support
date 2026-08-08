@@ -181,4 +181,4 @@ Top intents (current tools only — no full checkout):
 | Delivery driver tracking tools | OUT OF SCOPE |
 | Place order from chat | OUT OF SCOPE |
 | Unified HTTP only via tools (no agent fallback httpx) | PARTIAL — LLM path uses tools; rule fallbacks still inline |
-| Platform ActionProposal storage API | Phase C product |
+| Platform ActionProposal storage API | Local `proposal_store` + `GET/POST /agent/proposals*` (this service); platform UI remains final execute |

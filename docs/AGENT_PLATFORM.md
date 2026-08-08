@@ -124,6 +124,23 @@ Optional live probes: [SMOKE.md](./SMOKE.md).
 
 Agent 8 **never** calls `PATCH /api/menu` — only manager notifications with capped %.
 
+## ActionProposal closed loop
+
+Canonical model: `runtime/models.py` → `ActionProposal`  
+Fields: `proposal_id`, `type`, `store_id`, `agent`, `summary`, `rationale`, `risk`,
+`requires_approval=true`, `payload`, `status` (`PENDING|APPROVED|REJECTED|EXPIRED`),
+`created_at`, `idempotency_key`, `resolution_note`, `resolved_at`.
+
+| Step | Behaviour |
+|------|-----------|
+| Create | PROPOSE tools + runtime normalize → `proposal_store.save_proposal` (memory + JSONL under `data/proposals/`) |
+| Notify | `notify_managers` includes `proposal_id`, summary, rationale in message/`data` |
+| List | `GET /agent/proposals?storeId=&status=` (trigger API key) |
+| Resolve | `POST /agent/proposals/{id}/resolve` `{status, note?}` records outcome only |
+
+**Important:** Resolve on this service is **audit of manager decision**. Final business
+execute (price PATCH, PO send, campaign live) still happens in platform UI/backend.
+
 ## Out of scope
 
 - Auto-execution of prices, POs, or campaigns without a manager
