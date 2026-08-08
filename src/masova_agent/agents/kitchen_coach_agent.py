@@ -40,7 +40,19 @@ COACHING_TIPS = {
 }
 
 
-async def run_kitchen_coach() -> Dict[str, Any]:
+
+
+async def run_kitchen_coach():
+    """Public entry — routes through AgentRuntime with rule fallback."""
+    from ..runtime.wrap import run_ops_agent
+    return await run_ops_agent(
+        "kitchen_coach",
+        "scheduled",
+        _rule_run_kitchen_coach,
+        goal="Run kitchen_coach",
+    )
+
+async def _rule_run_kitchen_coach() -> Dict[str, Any]:
     """Generate nightly kitchen performance brief and push to managers."""
     from ..utils.config import get_config
     config = get_config()

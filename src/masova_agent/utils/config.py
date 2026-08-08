@@ -13,6 +13,8 @@ from ..exceptions import ConfigurationError
 class AgentConfig:
     """Agent configuration"""
     name: str = "MaSoVa_Intelligence"
+    # Model id is env-driven (LLM_MODEL) so the service stays provider-agnostic.
+    # Public docs still describe Gemini / Google ADK.
     model: str = "gemini-2.5-flash"
     app_name: str = "masova_support_agent"
     max_retries: int = 3
@@ -22,7 +24,7 @@ class AgentConfig:
 @dataclass
 class APIConfig:
     """API configuration"""
-    google_api_key: str
+    google_api_key: str  # resolved from LLM_API_KEY or GOOGLE_API_KEY
     use_vertex_ai: bool = False
     location_api_url: str = "http://ip-api.com/json/"
     location_timeout: float = 5.0
@@ -62,7 +64,9 @@ class Config:
             load_dotenv(override=True)
 
         # Initialize sub-configs
-        self.agent = AgentConfig()
+        self.agent = AgentConfig(
+            model=os.getenv("LLM_MODEL", os.getenv("GOOGLE_MODEL", "gemini-2.5-flash")),
+        )
         self.api = self._load_api_config()
         self.cache = CacheConfig()
         self.logging = LoggingConfig(
@@ -74,14 +78,20 @@ class Config:
         self.backend_url: str = os.getenv("BACKEND_URL", "http://192.168.50.88:8080")
         self.agent_token: str = os.getenv("AGENT_TOKEN", "")
         self.google_api_key: str = self.api.google_api_key
+        self.llm_api_key: str = self.api.google_api_key
+        self.llm_model: str = self.agent.model
         self.rabbitmq_url: str = os.getenv("RABBITMQ_URL", "amqp://guest:guest@192.168.50.88:5672/")
 
     def _load_api_config(self) -> APIConfig:
-        """Load API configuration from environment"""
-        api_key = os.getenv("GOOGLE_API_KEY")
+        """Load API configuration from environment.
+
+        Prefer LLM_API_KEY (provider-agnostic), fall back to GOOGLE_API_KEY
+        for existing deployments. Public documentation still refers to Gemini.
+        """
+        api_key = os.getenv("LLM_API_KEY") or os.getenv("GOOGLE_API_KEY")
         if not api_key:
             raise ConfigurationError(
-                "GOOGLE_API_KEY not found in environment. "
+                "LLM_API_KEY or GOOGLE_API_KEY not found in environment. "
                 "Please set it in your .env file."
             )
 

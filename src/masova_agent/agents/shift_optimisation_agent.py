@@ -26,7 +26,19 @@ SHIFT_SLOTS = [
 HIGH_DEMAND_THRESHOLD = 15  # predicted orders/hour
 
 
-async def run_shift_optimisation() -> Dict[str, Any]:
+
+
+async def run_shift_optimisation():
+    """Public entry — routes through AgentRuntime with rule fallback."""
+    from ..runtime.wrap import run_ops_agent
+    return await run_ops_agent(
+        "shift_optimisation",
+        "scheduled",
+        _rule_run_shift_optimisation,
+        goal="Run shift_optimisation",
+    )
+
+async def _rule_run_shift_optimisation() -> Dict[str, Any]:
     """Draft next week's shift schedule based on demand forecast."""
     from ..utils.config import get_config
     config = get_config()

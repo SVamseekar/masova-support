@@ -17,7 +17,19 @@ QUALIFYING_PERIOD_DAYS = 60
 RECOVERY_DISCOUNT_PERCENT = 15
 
 
-async def run_churn_prevention() -> Dict[str, Any]:
+
+
+async def run_churn_prevention():
+    """Public entry — routes through AgentRuntime with rule fallback."""
+    from ..runtime.wrap import run_ops_agent
+    return await run_ops_agent(
+        "churn_prevention",
+        "scheduled",
+        _rule_run_churn_prevention,
+        goal="Run churn_prevention",
+    )
+
+async def _rule_run_churn_prevention() -> Dict[str, Any]:
     from ..utils.config import get_config
     config = get_config()
     backend_url = config.backend_url
