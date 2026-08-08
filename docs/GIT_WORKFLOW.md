@@ -74,15 +74,16 @@ Config: [`.github/dependabot.yml`](../.github/dependabot.yml)
 | Ecosystem | Cadence | Grouping |
 |-----------|---------|----------|
 | `github-actions` | Weekly (Monday) | All Actions in one PR |
-| `pip` | Weekly (Monday) | Minor/patch grouped; **majors** open as separate PRs |
+| `pip` | Weekly (Monday) | **Google AI stack** (`google-adk`, `google-genai`, related) in one PR; other **minor/patch** grouped; remaining **majors** individual |
 
 - Commit prefix: `chore(deps):` (via `prefix: chore` + `include: scope`)
-- Labels: `dependencies`, plus `github-actions` or `python`
-- Runtime install source of truth: **`requirements.txt`** (CI installs it). `pyproject.toml` is also watched; keep versions aligned when bumping by hand.
-- `google-adk` **major** bumps are ignored by Dependabot — upgrade that package deliberately.
+- Labels: `dependencies`, plus `github-actions` or `python` (create these labels if missing)
+- Runtime install source of truth: **`requirements.txt`** (CI: `pip install -r requirements.txt` then `pip install -e . --no-deps`). Keep **`pyproject.toml` pins** aligned with those lower bounds.
+- **`google-adk` + `google-genai` must move together** — ADK versions pin a genai range (e.g. ADK 1.28.x needs `google-genai>=1.64,<2`). Majors for both are ignored by Dependabot; upgrade deliberately in one PR.
+- Also ignored majors: `redis`, `black` (noise / breaking).
 - Prefer **squash-merge** only after CI `test` is green.
-- Security updates (Dependabot security PRs) should be treated as higher priority than routine version bumps.
-- After changing `dependabot.yml`, close noisy ungrouped PRs; Dependabot will open fresh grouped PRs on the next schedule (or when you re-enable / re-run updates).
+- **Security alerts** (GitHub → Security → Dependabot): treat as higher priority than routine bumps. Security floor today: `google-adk>=1.28.1`, `python-dotenv>=1.2.2`.
+- After changing `dependabot.yml`, close conflicting ungrouped PRs; Dependabot will open fresh grouped PRs on the next schedule.
 
 ## Stale branches and archives
 
