@@ -17,6 +17,14 @@ from unittest.mock import AsyncMock, patch, MagicMock
 from datetime import datetime
 
 
+@pytest.fixture(autouse=True)
+def _disable_ops_llm(monkeypatch):
+    """Agent unit tests exercise rule fallbacks only (no live LLM)."""
+    monkeypatch.setenv("OPS_PREFER_LLM", "false")
+    monkeypatch.delenv("LLM_API_KEY", raising=False)
+    # Keep GOOGLE_API_KEY if present for review agent config mocks; prefer flag off is enough.
+
+
 # ---------------------------------------------------------------------------
 # Shared helpers
 # ---------------------------------------------------------------------------

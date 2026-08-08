@@ -30,20 +30,59 @@ Maximum 100 words. No marketing language. No "We value your feedback" cliches.
 
 
 
+REVIEW_INSTRUCTION = """You are MaSoVa Review Response Agent (ops).
+For low-rating reviews (<=3):
+1. get_order_context if order_id is present (tool data for items).
+2. Draft an empathetic reply using review text + order items only.
+3. submit_review_draft_notification with draft_text and rationale.
+Never post the review reply publicly — manager approval required.
+Keep draft under 100 words. No marketing cliches.
+"""
+
+
+def _review_llm_runner(review_data: Dict[str, Any]):
+    from ..runtime.ops_llm import make_ops_llm_runner
+    from ..runtime.wrap import AGENT_ALLOWLISTS
+
+    async def build_context(request):
+        return {
+            "review_id": review_data.get("reviewId"),
+            "rating": review_data.get("rating"),
+            "review_text": review_data.get("text", ""),
+            "order_id": review_data.get("orderId"),
+            "store_id": review_data.get("storeId"),
+        }
+
+    return make_ops_llm_runner(
+        instruction=REVIEW_INSTRUCTION,
+        tool_names=list(AGENT_ALLOWLISTS["review_response"]),
+        build_context=build_context,
+    )
+
+
 async def draft_review_response(review_data: Dict[str, Any]) -> Dict[str, Any]:
-    """Public entry — routes through AgentRuntime with rule/LLM fallback inside rule path."""
+    """Public entry — shared ops LLM tool loop + rule/template fallback."""
     from ..runtime.wrap import run_ops_agent
+    from ..runtime.ops_llm import ops_prefer_llm
 
     async def _fb():
         return await _rule_draft_review_response(review_data)
 
+    prefer = ops_prefer_llm()
     return await run_ops_agent(
         "review_response",
         "event",
         _fb,
         store_id=review_data.get("storeId"),
         goal="Draft manager reply for low-rating review",
-        context={"review_id": review_data.get("reviewId"), "rating": review_data.get("rating")},
+        context={
+            "review_id": review_data.get("reviewId"),
+            "rating": review_data.get("rating"),
+            "review_text": (review_data.get("text") or "")[:500],
+            "order_id": review_data.get("orderId"),
+        },
+        llm_runner=_review_llm_runner(review_data) if prefer else None,
+        prefer_llm=prefer,
     )
 
 async def _rule_draft_review_response(review_data: Dict[str, Any]) -> Dict[str, Any]:

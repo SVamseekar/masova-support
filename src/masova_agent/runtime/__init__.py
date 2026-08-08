@@ -10,6 +10,7 @@ from .models import (
 from .agent_runtime import AgentRuntime, get_runtime
 from .policy import PolicyEngine
 from .audit import AuditLogger
+from .ops_llm import make_ops_llm_runner, ops_prefer_llm, run_scripted_tool_loop
 
 __all__ = [
     "ActionProposal",
@@ -21,4 +22,7 @@ __all__ = [
     "get_runtime",
     "PolicyEngine",
     "AuditLogger",
+    "make_ops_llm_runner",
+    "ops_prefer_llm",
+    "run_scripted_tool_loop",
 ]
