@@ -4,7 +4,7 @@
 
 # Core Dependencies
 # ADK <1.28.1 vulnerable; ADK >=1.37 needs google-genai 2.x — stay on 1.28–1.36 line
-google-adk>=1.28.1,<1.37
+google-adk>=1.36.2,<1.37
 fastapi>=0.124.1
 uvicorn[standard]>=0.34.0
 google-genai>=1.72.0,<2
@@ -13,9 +13,9 @@ python-dotenv>=1.2.2
 pyjwt>=2.10.1
 
 # Google Cloud Dependencies (installed automatically by google-adk)
-google-api-core>=2.29.0
-google-auth>=2.48.0
-googleapis-common-protos>=1.72.0
+google-api-core>=2.33.0
+google-auth>=2.56.2
+googleapis-common-protos>=1.75.0
 
 redis==5.2.1
 apscheduler==3.10.4
