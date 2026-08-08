@@ -109,6 +109,21 @@ If the LLM path fails, rule-based agents still draft proposals and notifications
 Full tool ↔ API ↔ service ↔ risk mapping: [CAPABILITY_MAP.md](./CAPABILITY_MAP.md).  
 Optional live probes: [SMOKE.md](./SMOKE.md).
 
+## Equal quality bar (all 8 agents)
+
+| Bar | Requirement |
+|-----|-------------|
+| Entry | Public entry goes through `AgentRuntime` / `run_ops_agent` (chat via ADK + shared policy) |
+| Tools | READ / COMPUTE / PROPOSE only; EXECUTE never allowlisted |
+| Numbers | Stock, forecast, counts, prices only from READ/COMPUTE tools |
+| Fallback | Rule path when `OPS_PREFER_LLM=false` or LLM raises |
+| Idempotency | `runtime/idempotency.py` keys: agent+store+action+hour/date bucket on draft PO, campaign, shifts, price suggest |
+| Audit | agent, trigger, store_id, tools_used, used_fallback, proposal summaries/rationale |
+| Signal gate | Pricing: skip LLM when no overload/underload; inventory: skip when no low stock |
+| Eval | Mocked golden paths in `tests/test_agents.py`, `tests/test_ops_llm_tools.py`, `tests/test_equal_agent_quality.py` |
+
+Agent 8 **never** calls `PATCH /api/menu` — only manager notifications with capped %.
+
 ## Out of scope
 
 - Auto-execution of prices, POs, or campaigns without a manager

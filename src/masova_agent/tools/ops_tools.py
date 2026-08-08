@@ -31,8 +31,9 @@ def _proposal(
     summary: str,
     rationale: str,
     payload: Optional[dict] = None,
+    idempotency_key: str = "",
 ) -> dict[str, Any]:
-    return {
+    out = {
         "type": type_,
         "store_id": store_id or "",
         "summary": summary,
@@ -41,6 +42,11 @@ def _proposal(
         "payload": payload or {},
         "requires_approval": True,
     }
+    if idempotency_key:
+        out["idempotency_key"] = idempotency_key
+        out["payload"] = dict(out["payload"])
+        out["payload"]["idempotency_key"] = idempotency_key
+    return out
 
 
 def _require_token() -> Optional[dict]:
@@ -502,6 +508,23 @@ async def create_draft_po(
     if not store_id or not supplier_id or not items:
         return {"ok": False, "error": "store_id, supplier_id, and items required"}
 
+    from ..runtime.idempotency import check_or_claim, make_key
+
+    idem_key = make_key(
+        "inventory_reorder", store_id, "draft_po", window="hour", extra=supplier_id
+    )
+    is_new, prior = check_or_claim(idem_key, {"supplier_id": supplier_id})
+    if not is_new:
+        return {
+            "ok": True,
+            "duplicate": True,
+            "idempotency_key": idem_key,
+            "skipped": True,
+            "summary": "Duplicate draft PO skipped (same store/supplier/hour)",
+            "prior": prior,
+            "proposal": None,
+        }
+
     po_items = []
     for it in items:
         if not isinstance(it, dict):
@@ -523,6 +546,7 @@ async def create_draft_po(
         "generatedAt": datetime.now().isoformat(),
         "items": po_items,
         "notes": notes or f"Auto-draft by inventory agent: {rationale}"[:500],
+        "idempotencyKey": idem_key,
     }
     async with httpx.AsyncClient(timeout=30.0) as client:
         st, body = await post_json(client, "/api/purchase-orders/auto-generate", payload)
@@ -533,10 +557,12 @@ async def create_draft_po(
             summary=f"Draft PO for {len(po_items)} item(s) via supplier {supplier_id}",
             rationale=rationale or "Low stock relative to forecast / reorder threshold",
             payload={"supplier_id": supplier_id, "items": po_items, "http_status": st},
+            idempotency_key=idem_key,
         )
         return {
             "ok": ok,
             "http_status": st,
+            "idempotency_key": idem_key,
             "proposal": proposal,
             "response": body if ok else None,
             "error": None if ok else f"po_http_{st}",
@@ -624,6 +650,23 @@ async def propose_price_suggestion(
         pct = min(abs(float(percent)), PRICE_DISCOUNT_PCT_MAX)
         direction = "discount"
 
+    from ..runtime.idempotency import check_or_claim, make_key
+
+    idem_key = make_key(
+        "dynamic_pricing", store_id, f"price_{direction}", window="hour"
+    )
+    is_new, prior = check_or_claim(idem_key, {"direction": direction, "percent": pct})
+    if not is_new:
+        return {
+            "ok": True,
+            "duplicate": True,
+            "skipped": True,
+            "idempotency_key": idem_key,
+            "prior": prior,
+            "proposal": None,
+            "patches_menu": False,
+        }
+
     names = item_names or []
     ids = item_ids or []
     names_str = ", ".join(str(n) for n in names[:8]) or ", ".join(str(i) for i in ids[:8]) or "selected items"
@@ -655,6 +698,7 @@ async def propose_price_suggestion(
         store_id,
         summary=f"{direction} {pct:.0f}% on {names_str[:80]}",
         rationale=rationale or message,
+        idempotency_key=idem_key,
         payload={
             "direction": direction,
             "percent": pct,
@@ -691,6 +735,19 @@ async def create_draft_campaign(
     customer_ids = customer_ids or []
     if not store_id or not customer_ids:
         return {"ok": False, "error": "store_id and customer_ids required"}
+    from ..runtime.idempotency import check_or_claim, make_key
+
+    idem_key = make_key("churn_prevention", store_id, "draft_campaign", window="date")
+    is_new, prior = check_or_claim(idem_key, {"customer_count": len(customer_ids)})
+    if not is_new:
+        return {
+            "ok": True,
+            "duplicate": True,
+            "skipped": True,
+            "idempotency_key": idem_key,
+            "prior": prior,
+            "proposal": None,
+        }
     payload = {
         "storeId": store_id,
         "name": name or f"Win-Back Campaign — {datetime.now().strftime('%Y-%m-%d')}",
@@ -705,6 +762,7 @@ async def create_draft_campaign(
         "generatedBy": "churn_prevention_agent",
         "generatedAt": datetime.now().isoformat(),
         "rationale": rationale,
+        "idempotencyKey": idem_key,
     }
     async with httpx.AsyncClient(timeout=30.0) as client:
         st, body = await post_json(client, "/api/campaigns", payload)
@@ -715,8 +773,15 @@ async def create_draft_campaign(
             summary=f"Draft win-back for {len(customer_ids)} customers",
             rationale=rationale or "Churn segment: high-value inactive customers",
             payload={"customer_count": len(customer_ids), "discount_percent": discount_percent},
+            idempotency_key=idem_key,
         )
-        return {"ok": ok, "http_status": st, "proposal": proposal, "error": None if ok else f"campaign_http_{st}"}
+        return {
+            "ok": ok,
+            "http_status": st,
+            "idempotency_key": idem_key,
+            "proposal": proposal,
+            "error": None if ok else f"campaign_http_{st}",
+        }
 
 
 async def create_draft_shifts(
@@ -731,6 +796,19 @@ async def create_draft_shifts(
     shifts = shifts or []
     if not store_id or not shifts:
         return {"ok": False, "error": "store_id and shifts required"}
+    from ..runtime.idempotency import check_or_claim, make_key
+
+    idem_key = make_key("shift_optimisation", store_id, "draft_shifts", window="date")
+    is_new, prior = check_or_claim(idem_key, {"shift_count": len(shifts)})
+    if not is_new:
+        return {
+            "ok": True,
+            "duplicate": True,
+            "skipped": True,
+            "idempotency_key": idem_key,
+            "prior": prior,
+            "proposal": None,
+        }
     # Force DRAFT status
     for s in shifts:
         if isinstance(s, dict):
@@ -740,7 +818,7 @@ async def create_draft_shifts(
         st, body = await post_json(
             client,
             "/api/shifts/bulk",
-            {"storeId": store_id, "shifts": shifts, "status": "DRAFT"},
+            {"storeId": store_id, "shifts": shifts, "status": "DRAFT", "idempotencyKey": idem_key},
         )
         ok = st in (200, 201)
         proposal = _proposal(
@@ -749,8 +827,14 @@ async def create_draft_shifts(
             summary=f"Draft {len(shifts)} shift slot(s)",
             rationale=rationale or "Built from forecast demand + staff pool",
             payload={"shift_count": len(shifts)},
+            idempotency_key=idem_key,
         )
-        return {"ok": ok, "http_status": st, "proposal": proposal}
+        return {
+            "ok": ok,
+            "http_status": st,
+            "idempotency_key": idem_key,
+            "proposal": proposal,
+        }
 
 
 async def submit_review_draft_notification(
