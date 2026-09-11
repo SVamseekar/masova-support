@@ -14,8 +14,9 @@ from contextlib import asynccontextmanager
 from typing import Optional
 
 from dotenv import load_dotenv
-from fastapi import Depends, FastAPI, HTTPException, Body
+from fastapi import Depends, FastAPI, HTTPException, Body, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from .agent import send_message_async, _session_service
@@ -100,6 +101,20 @@ app.add_middleware(
     allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def rate_limit_middleware(request: Request, call_next):
+    from .runtime.rate_limit import check_rate_limit, classify_route_tier
+
+    tier = classify_route_tier(request.url.path, request.method)
+    client_host = request.client.host if request.client else "unknown"
+    key = request.headers.get("X-Agent-Api-Key") or request.headers.get(
+        "X-Customer-Token", client_host
+    )
+    if not check_rate_limit(key, tier):
+        return JSONResponse(status_code=429, content={"detail": "Rate limit exceeded"})
+    return await call_next(request)
 
 
 # ---------------------------------------------------------------------------
