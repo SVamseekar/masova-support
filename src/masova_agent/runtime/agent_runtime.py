@@ -22,6 +22,7 @@ from .models import (
 from .policy import PolicyEngine
 from . import proposal_store
 from . import metrics
+from . import run_store
 
 logger = logging.getLogger(__name__)
 
@@ -145,7 +146,20 @@ class AgentRuntime:
             error=error,
             latency_ms=latency_ms,
         )
-        self.audit.log_run(result)
+        audit_record = self.audit.log_run(result)
+        try:
+            run_store.append_run(
+                {
+                    "agent": audit_record.get("agent"),
+                    "trigger": audit_record.get("trigger_type"),
+                    "store_id": audit_record.get("store_id"),
+                    "summary": audit_record.get("summary"),
+                    "run_id": audit_record.get("run_id"),
+                    "status": audit_record.get("status"),
+                }
+            )
+        except Exception as re:
+            logger.warning("run_store append failed: %s", re)
         metrics.record_run(
             agent=result.agent_name,
             used_fallback=result.used_fallback,
