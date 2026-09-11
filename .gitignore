@@ -107,5 +107,6 @@ temp/
 masova_agent_legacy/
 /masova_agent/
 
-# Local durable proposal store
-data/
+# Local durable stores (knowledge markdown is tracked)
+data/proposals/
+data/runs/
