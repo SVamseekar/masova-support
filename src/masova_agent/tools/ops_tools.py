@@ -571,7 +571,7 @@ async def create_draft_po(
         "idempotencyKey": idem_key,
     }
     async with httpx.AsyncClient(timeout=30.0) as client:
-        st, body = await post_json(client, "/api/purchase-orders/auto-generate", payload)
+        st, body = await post_json(client, "/api/purchase-orders", payload)
         ok = st in (200, 201)
         proposal = _proposal(
             "DRAFT_PURCHASE_ORDER",

@@ -153,7 +153,7 @@ async def _rule_run_inventory_reorder() -> Dict[str, Any]:
                 }
 
                 po_res = await client.post(
-                    f"{backend_url}/api/purchase-orders/auto-generate",
+                    f"{backend_url}/api/purchase-orders",
                     json=po_payload,
                     headers=headers,
                 )
