@@ -293,3 +293,40 @@ async def resolve_action_proposal(proposal_id: str, body: ResolveProposalBody):
     if not rec:
         raise HTTPException(status_code=404, detail="proposal not found")
     return rec
+
+
+class ManagerChatRequest(BaseModel):
+    message: str
+    session_id: Optional[str] = "default"
+    store_id: Optional[str] = None
+
+
+@app.post("/agent/manager/chat")
+async def manager_chat(body: ManagerChatRequest, _=Depends(require_scope("chat:manager"))):
+    from .agents.manager_chat_agent import run_manager_chat
+
+    return await run_manager_chat(body.message, body.session_id or "default", body.store_id)
+
+
+@app.get("/agents")
+async def list_agents(_=Depends(require_scope("read:registry"))):
+    from .runtime.wrap import AGENT_ALLOWLISTS
+
+    return [{"name": name, "tool_count": len(tools)} for name, tools in AGENT_ALLOWLISTS.items()]
+
+
+@app.get("/agent/runs")
+async def get_runs(limit: int = 100, _=Depends(require_scope("read:runs"))):
+    from .runtime import run_store
+
+    return run_store.list_runs(limit=limit)
+
+
+@app.get("/agent/runs/{run_id}")
+async def get_run_by_id(run_id: str, _=Depends(require_scope("read:runs"))):
+    from .runtime import run_store
+
+    run = run_store.get_run(run_id)
+    if run is None:
+        raise HTTPException(status_code=404, detail="Run not found")
+    return run
