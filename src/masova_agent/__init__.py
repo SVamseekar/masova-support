@@ -4,7 +4,7 @@ MaSoVa Customer Support Agent
 A professional AI agent built with Google ADK for customer support operations.
 """
 
-__version__ = "0.4.0"
+__version__ = "0.5.0"
 
 # Core ADK imports are lazy to avoid pulling in google.adk at import time
 # (which fails in environments without the package, e.g. test runners).
