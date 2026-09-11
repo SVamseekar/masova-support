@@ -28,8 +28,10 @@ from .auth import (
 )
 from .runtime.identity import require_scope
 from .scheduler.scheduler import scheduler, register_jobs
+from .utils.env_check import check_environment
 
 load_dotenv()
+check_environment(strict=True)
 logger = logging.getLogger(__name__)
 
 
