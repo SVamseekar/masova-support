@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- Product documentation lives at the repository root; duplicate `docs/` files removed
+
 ## [0.5.0] - 2026-09-11
 
 First Git-tagged release. Changelog versions 0.1.0–0.4.0 were never tagged; those tags were not backfilled.

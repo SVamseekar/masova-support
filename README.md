@@ -13,10 +13,10 @@ AI-powered customer support and ops agents for the MaSoVa restaurant platform, b
 - **Human-in-the-loop** — agents **propose** (DRAFT + manager notify); they do not auto-execute prices, POs, or refunds
 - **Shared AgentRuntime** — policy, audit logs, rule-based fallbacks when the model is unavailable
 
-See [docs/AGENT_PLATFORM.md](docs/AGENT_PLATFORM.md) for architecture,  
-[docs/CAPABILITY_MAP.md](docs/CAPABILITY_MAP.md) for tool ↔ platform APIs,  
-[docs/RUNBOOK.md](docs/RUNBOOK.md) for operations, and  
-[docs/SMOKE_CHECKLIST.md](docs/SMOKE_CHECKLIST.md) for live probes.
+See [AGENT_PLATFORM.md](AGENT_PLATFORM.md) for architecture,
+[CAPABILITY_MAP.md](CAPABILITY_MAP.md) for tool ↔ platform APIs,
+[RUNBOOK.md](RUNBOOK.md) for operations, and
+[SMOKE.md](SMOKE.md) for live probes.
 
 **Design:** industry-style vertical agents — secure identity, tool-grounded numbers, human approval proposals, rule fallbacks, contract-mapped APIs, audited runs, CI evals — not an omniscient autonomous platform brain.
 
@@ -59,7 +59,7 @@ make lint    # black --check, flake8, mypy
 make hygiene
 ```
 
-Unit tests mock HTTP and LLM; no live Redis/RabbitMQ/backend required. CI runs hygiene, flake8 syntax checks, package import, pytest, and `pip-audit` on pull requests and `main`.
+Unit tests mock HTTP and LLM; no live Redis/RabbitMQ/backend required. CI runs hygiene, Black, flake8, mypy, wheel build, pytest, and `pip-audit` on pull requests and `main`.
 
 ### Docker
 
@@ -78,9 +78,11 @@ src/masova_agent/
   tools/ops_tools.py    # Ops READ/COMPUTE/PROPOSE tools
   scheduler/            # APScheduler (shares FastAPI event loop)
 tests/                  # unit + tests/eval industry harness
-docs/                   # AGENT_PLATFORM, CAPABILITY_MAP, RUNBOOK, SMOKE*
 .github/workflows/ci.yml
 config/env.example
+AGENT_PLATFORM.md       # architecture
+CAPABILITY_MAP.md       # tool ↔ HTTP map
+RUNBOOK.md SMOKE.md     # ops + live probes
 ```
 
 ## Auth model
@@ -95,7 +97,7 @@ Customer tools never trust LLM-supplied customer IDs; identity is bound from the
 
 ## Releases
 
-Semantic versions `vMAJOR.MINOR.PATCH`. See [docs/RELEASING.md](docs/RELEASING.md) and [CHANGELOG.md](CHANGELOG.md).
+Semantic versions `vMAJOR.MINOR.PATCH`. See [RELEASING.md](RELEASING.md) and [CHANGELOG.md](CHANGELOG.md).
 
 ## Security
 

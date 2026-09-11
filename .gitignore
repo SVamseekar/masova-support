@@ -92,7 +92,7 @@ GEMINI.md
 .grok/
 
 # Agent scratch (not product documentation)
-docs/audit/
+docs/
 plans/
 plan/
 specs/

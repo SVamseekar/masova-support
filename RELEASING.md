@@ -24,16 +24,13 @@ Do not reuse a published version. Do not move or delete a published tag.
 
 ## Current status
 
-Changelog documents historical versions **0.1.0**, **0.3.0**, and **0.4.0**.
-Those versions were **not** tagged in Git. Do not backfill tags onto guessed
-commits. The next production cut should be tagged from `main` after CI is green
-(likely `v0.5.0` if Unreleased work is the first tagged ship, or `v0.4.0` only
-if that cut is intentionally the first tag and matches that changelog section).
+Latest tagged release: **v0.5.0**. Changelog versions 0.1.0, 0.3.0, and 0.4.0
+were never tagged; do not backfill those tags.
 
 ## Process
 
 1. Working tree clean; branch is up-to-date `main`.
-2. Required CI check `test` is green (hygiene, flake8 syntax, import, pytest, pip-audit).
+2. Required CI check `test` is green (hygiene, Black, flake8, mypy, wheel, pytest, pip-audit).
 3. Choose the SemVer increment from the table above.
 4. Update `pyproject.toml` `[project].version`.
 5. Move `[Unreleased]` notes in `CHANGELOG.md` under the new version and date.
