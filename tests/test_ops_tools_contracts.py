@@ -45,3 +45,23 @@ async def test_create_draft_po_posts_entity_not_auto_generate():
         assert called_path.endswith("/api/purchase-orders")
         assert "auto-generate" not in called_path
         assert payload.get("status") == "DRAFT"
+
+
+@pytest.mark.asyncio
+async def test_read_kitchen_metrics_uses_orders_analytics_with_staff_and_date():
+    with patch.object(ops_tools, "get_json", new=AsyncMock(return_value=(200, {}))) as mock_get:
+        await ops_tools.read_kitchen_metrics(store_id="s1", staff_id="staff1", date="2026-09-11")
+        called_path = mock_get.call_args[0][1]
+        params = mock_get.call_args.kwargs.get("params") or {}
+        assert "/api/orders/analytics" in called_path
+        assert params.get("type") == "kitchen"
+        assert params.get("staffId") == "staff1"
+
+
+@pytest.mark.asyncio
+async def test_read_kitchen_metrics_falls_back_without_staff_id():
+    with patch.object(ops_tools, "get_json", new=AsyncMock(return_value=(200, {}))) as mock_get:
+        await ops_tools.read_kitchen_metrics(store_id="s1", staff_id=None, date="2026-09-11")
+        params = mock_get.call_args.kwargs.get("params") or {}
+        assert params.get("type") != "kitchen"
+        assert params.get("type") == "prep-time"

@@ -379,17 +379,27 @@ async def read_staff_slots(store_id: str) -> dict[str, Any]:
         return {"ok": True, "store_id": store_id, "staff": staff}
 
 
-async def read_kitchen_metrics(store_id: str) -> dict[str, Any]:
-    """Today's kitchen performance metrics."""
+async def read_kitchen_metrics(
+    store_id: str,
+    staff_id: Optional[str] = None,
+    date: Optional[str] = None,
+) -> dict[str, Any]:
+    """Kitchen performance metrics via commerce GET /api/orders/analytics."""
     err = _require_token()
     if err:
         return err
+    day = date or datetime.now().date().isoformat()
+    if staff_id:
+        params: dict[str, Any] = {
+            "type": "kitchen",
+            "staffId": staff_id,
+            "date": day,
+            "storeId": store_id,
+        }
+    else:
+        params = {"type": "prep-time", "storeId": store_id, "date": day}
     async with httpx.AsyncClient(timeout=20.0) as client:
-        st, body = await get_json(
-            client,
-            "/api/analytics/orders",
-            params={"storeId": store_id, "period": "today"},
-        )
+        st, body = await get_json(client, "/api/orders/analytics", params=params)
         if st != 200:
             return {"ok": False, "error": f"metrics_http_{st}"}
         m = body if isinstance(body, dict) else {}
