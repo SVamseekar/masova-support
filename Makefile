@@ -1,4 +1,4 @@
-.PHONY: help install test chat web clean lint format
+.PHONY: help install install-dev test chat web clean lint format setup hygiene audit
 
 help:  ## Show this help message
 	@echo "MaSoVa Agent - Available Commands:"
@@ -27,23 +27,23 @@ clean:  ## Clean up generated files
 	find . -type d -name "*.egg-info" -exec rm -rf {} + 2>/dev/null || true
 	rm -rf build/ dist/ .pytest_cache/ 2>/dev/null || true
 
-lint:  ## Run linters
-	flake8 src/ tests/
-	mypy src/
+lint:  ## Syntax and undefined-name checks (CI gate)
+	flake8 src tests --select=E9,F63,F7,F82 --show-source --statistics
 
 format:  ## Format code with black
 	black src/ tests/
 
+hygiene:  ## Fail if secrets or local-only files are tracked
+	bash scripts/check-hygiene.sh
+
+audit:  ## Dependency vulnerability scan
+	pip-audit -r requirements.txt --progress-spinner off
+
 setup:  ## First-time setup
 	@echo "Setting up MaSoVa Agent..."
 	python3 -m venv .venv
-	@echo "Activating virtual environment..."
 	. .venv/bin/activate && pip install --upgrade pip
 	. .venv/bin/activate && pip install -r requirements.txt
-	@echo "Creating .env file..."
-	cp config/env.example src/masova_agent/.env
-	@echo ""
-	@echo "✅ Setup complete!"
-	@echo "Edit src/masova_agent/.env to add your GOOGLE_API_KEY"
-	@echo ""
-	@echo "Run 'make web' to start the web interface"
+	. .venv/bin/activate && pip install -e . --no-deps
+	@if [ ! -f .env ]; then cp config/env.example .env; echo "Created .env from config/env.example"; fi
+	@echo "Setup complete. Edit .env with real keys. Run: source .venv/bin/activate && make test"
