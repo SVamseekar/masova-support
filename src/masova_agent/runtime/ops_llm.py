@@ -191,6 +191,10 @@ async def run_genai_tool_loop(
     can fall back to rule path.
     """
     from .guardrails import screen_input, screen_output
+    from . import circuit
+
+    if not circuit.allow_llm(request.agent_name):
+        raise RuntimeError("circuit_open")
 
     key = api_key if api_key is not None else llm_api_key()
     if not key:
@@ -380,6 +384,7 @@ async def run_genai_tool_loop(
         elif t == "WRITE_FORECAST":
             output["forecasts_written"] = output.get("forecasts_written", 0) + 1
 
+    circuit.record_success(request.agent_name)
     return output
 
 

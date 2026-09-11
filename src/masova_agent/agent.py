@@ -114,12 +114,20 @@ async def send_message_async(
     """
     from .runtime.wrap import run_ops_agent, AGENT_ALLOWLISTS
     from .runtime.guardrails import screen_input, screen_output
+    from .runtime import circuit
 
     actual_session_id = await _ensure_session(user_id, session_id)
 
     screened, blocked = screen_input(message)
     if blocked:
         return "I can't help with that request.", actual_session_id
+
+    if not circuit.allow_llm("support_chat"):
+        return (
+            "I'm having trouble reaching our systems right now. "
+            "Please try again shortly, or contact support@masova.com / 1800-MASOVA.",
+            actual_session_id,
+        )
 
     async def _adk_path():
         runner = Runner(
