@@ -1,6 +1,7 @@
 """
 Logging utilities for MaSoVa Agent
 """
+
 import logging
 import sys
 from typing import Optional
@@ -8,9 +9,7 @@ from pathlib import Path
 
 
 def setup_logging(
-    level: str = "INFO",
-    log_file: Optional[str] = None,
-    format_string: Optional[str] = None
+    level: str = "INFO", log_file: Optional[str] = None, format_string: Optional[str] = None
 ) -> None:
     """
     Setup logging configuration
@@ -27,7 +26,7 @@ def setup_logging(
     formatter = logging.Formatter(format_string)
 
     # Setup handlers
-    handlers = []
+    handlers: list[logging.Handler] = []
 
     # Console handler
     console_handler = logging.StreamHandler(sys.stdout)
@@ -43,11 +42,7 @@ def setup_logging(
         handlers.append(file_handler)
 
     # Configure root logger
-    logging.basicConfig(
-        level=getattr(logging, level.upper()),
-        handlers=handlers,
-        force=True
-    )
+    logging.basicConfig(level=getattr(logging, level.upper()), handlers=handlers, force=True)
 
 
 def get_logger(name: str) -> logging.Logger:

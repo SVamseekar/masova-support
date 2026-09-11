@@ -1,6 +1,7 @@
 """
 Location service for geolocation
 """
+
 import httpx
 from typing import Optional, Dict
 from datetime import datetime, timedelta
@@ -67,8 +68,7 @@ class LocationService:
         """
         try:
             response = httpx.get(
-                self.config.api.location_api_url,
-                timeout=self.config.api.location_timeout
+                self.config.api.location_api_url, timeout=self.config.api.location_timeout
             )
             response.raise_for_status()
             data = response.json()
@@ -78,7 +78,7 @@ class LocationService:
                 country=data.get("country", "Unknown"),
                 latitude=data.get("lat"),
                 longitude=data.get("lon"),
-                region=data.get("regionName")
+                region=data.get("regionName"),
             )
 
         except httpx.HTTPError as e:

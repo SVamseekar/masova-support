@@ -8,7 +8,6 @@ from .agent_runtime import get_runtime
 from .models import AgentRunRequest, FallbackFn, LlmRunnerFn
 from .ops_llm import ops_prefer_llm
 
-
 # Default tool allowlists per agent (no EXECUTE).
 AGENT_ALLOWLISTS: dict[str, list[str]] = {
     "support_chat": [

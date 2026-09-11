@@ -35,6 +35,7 @@ _session_service = RedisSessionService(redis_url=_redis_url)
 
 _created_sessions: dict[str, str] = {}  # session_key -> actual session_id
 
+
 def _resolve_model() -> str:
     return os.getenv("LLM_MODEL", os.getenv("GOOGLE_MODEL", "gemini-2.5-flash"))
 
@@ -181,4 +182,5 @@ def send_message(
     session_id: str = "default",
 ) -> str:
     """Synchronous wrapper for CLI use."""
-    return asyncio.run(send_message_async(message, user_id, session_id))
+    reply, _session_id = asyncio.run(send_message_async(message, user_id, session_id))
+    return reply

@@ -30,6 +30,7 @@ logger = logging.getLogger(__name__)
 @dataclass(frozen=True)
 class AgentIdentity:
     """Authenticated identity for the current request, bound from a verified JWT."""
+
     user_id: str
     user_type: str
     store_id: Optional[str]
@@ -83,9 +84,12 @@ async def verify_customer_jwt(authorization: str = Header(default="")) -> AgentI
     request-body fields.
     """
     if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing or malformed Authorization header")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing or malformed Authorization header",
+        )
 
-    token = authorization[len("Bearer "):].strip()
+    token = authorization[len("Bearer ") :].strip()
     if not token:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing bearer token")
 
@@ -99,7 +103,9 @@ async def verify_customer_jwt(authorization: str = Header(default="")) -> AgentI
 
     user_id = claims.get("sub")
     if not user_id:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token missing subject claim")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Token missing subject claim"
+        )
 
     return AgentIdentity(
         user_id=user_id,
@@ -123,4 +129,6 @@ async def verify_trigger_api_key(x_agent_api_key: str = Header(default="")) -> N
             detail="Agent trigger endpoints are not configured (AGENT_TRIGGER_API_KEY unset)",
         )
     if not x_agent_api_key or x_agent_api_key != expected:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or missing API key")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or missing API key"
+        )

@@ -1,12 +1,12 @@
 """
 Unit tests for masova_agent.auth — JWT verification and identity binding.
 """
+
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-import os
 import time
 
 import jwt
@@ -60,7 +60,8 @@ class TestVerifyCustomerJwt:
     async def test_expired_token_raises_401(self):
         token = jwt.encode(
             {"sub": "cust-123", "userType": "CUSTOMER", "exp": int(time.time()) - 10},
-            SECRET, algorithm="HS512",
+            SECRET,
+            algorithm="HS512",
         )
         with pytest.raises(HTTPException) as exc:
             await verify_customer_jwt(authorization=f"Bearer {token}")
@@ -76,14 +77,20 @@ class TestVerifyCustomerJwt:
 
     @pytest.mark.asyncio
     async def test_wrong_secret_raises_401(self):
-        token = jwt.encode({"sub": "cust-123", "exp": int(time.time()) + 3600}, "wrong-secret-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", algorithm="HS512")
+        token = jwt.encode(
+            {"sub": "cust-123", "exp": int(time.time()) + 3600},
+            "wrong-secret-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            algorithm="HS512",
+        )
         with pytest.raises(HTTPException) as exc:
             await verify_customer_jwt(authorization=f"Bearer {token}")
         assert exc.value.status_code == 401
 
     @pytest.mark.asyncio
     async def test_missing_subject_claim_raises_401(self):
-        token = jwt.encode({"userType": "CUSTOMER", "exp": int(time.time()) + 3600}, SECRET, algorithm="HS512")
+        token = jwt.encode(
+            {"userType": "CUSTOMER", "exp": int(time.time()) + 3600}, SECRET, algorithm="HS512"
+        )
         with pytest.raises(HTTPException) as exc:
             await verify_customer_jwt(authorization=f"Bearer {token}")
         assert exc.value.status_code == 401

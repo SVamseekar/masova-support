@@ -1,14 +1,15 @@
 """ActionProposal store, normalize, list/resolve API."""
+
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 import pytest
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
 from fastapi.testclient import TestClient
 
-from masova_agent.runtime.models import ActionProposal, ProposalStatus, RiskTier
+from masova_agent.runtime.models import ActionProposal, ProposalStatus
 from masova_agent.runtime import proposal_store
 from masova_agent.runtime.agent_runtime import get_runtime, reset_runtime_for_tests
 from masova_agent.runtime.models import AgentRunRequest
@@ -46,13 +47,16 @@ class TestActionProposalModel:
         assert d["risk"] == "PROPOSE"
 
     def test_from_dict_normalizes(self):
-        p = ActionProposal.from_dict({
-            "type": "X",
-            "store_id": "s1",
-            "summary": "s",
-            "rationale": "r",
-            "idempotency_key": "k1",
-        }, agent="kitchen_coach")
+        p = ActionProposal.from_dict(
+            {
+                "type": "X",
+                "store_id": "s1",
+                "summary": "s",
+                "rationale": "r",
+                "idempotency_key": "k1",
+            },
+            agent="kitchen_coach",
+        )
         assert p.agent == "kitchen_coach"
         assert p.status == ProposalStatus.PENDING
 
@@ -84,9 +88,7 @@ class TestProposalStore:
             proposal_store.resolve_proposal(p.proposal_id, "EXECUTE")
 
     def test_notify_payload(self):
-        p = ActionProposal(
-            type="T", store_id="s", summary="Sum", rationale="Why", agent="a"
-        )
+        p = ActionProposal(type="T", store_id="s", summary="Sum", rationale="Why", agent="a")
         n = proposal_store.notify_payload_for(p)
         assert n["proposal_id"] == p.proposal_id
         assert n["requires_approval"] is True
@@ -98,13 +100,15 @@ class TestRuntimePersistsProposals:
         async def fb():
             return {
                 "status": "ok",
-                "proposals": [{
-                    "type": "DRAFT_PURCHASE_ORDER",
-                    "store_id": "DOM001",
-                    "summary": "PO",
-                    "rationale": "low",
-                    "requires_approval": True,
-                }],
+                "proposals": [
+                    {
+                        "type": "DRAFT_PURCHASE_ORDER",
+                        "store_id": "DOM001",
+                        "summary": "PO",
+                        "rationale": "low",
+                        "requires_approval": True,
+                    }
+                ],
             }
 
         runtime = get_runtime()
@@ -178,9 +182,11 @@ class TestNotifyIncludesProposal:
             captured.append(body)
             return 201, {}
 
-        with patch.object(ops_tools, "_require_token", return_value=None), patch.object(
-            ops_tools, "get_json", side_effect=fake_get
-        ), patch.object(ops_tools, "post_json", side_effect=fake_post):
+        with (
+            patch.object(ops_tools, "_require_token", return_value=None),
+            patch.object(ops_tools, "get_json", side_effect=fake_get),
+            patch.object(ops_tools, "post_json", side_effect=fake_post),
+        ):
             await ops_tools.notify_managers(
                 store_id="DOM001",
                 message="Please review",

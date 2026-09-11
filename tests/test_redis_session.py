@@ -1,13 +1,14 @@
 """Tests for Redis session service"""
+
 import sys
 import os
 import pytest
 from unittest.mock import MagicMock, patch
 
 # Ensure src/ package is importable
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-import masova_agent.core.redis_session_service  # noqa: F401 — force module registration for patching
+import masova_agent.core.redis_session_service  # noqa: F401,E501
 
 
 @pytest.mark.asyncio
@@ -21,6 +22,7 @@ async def test_create_session_stores_in_redis():
     with patch("masova_agent.core.redis_session_service.redis.Redis") as mock_cls:
         mock_cls.from_url = MagicMock(return_value=mock_redis)
         from masova_agent.core.redis_session_service import RedisSessionService
+
         service = RedisSessionService(redis_url="redis://localhost:6379/1")
         session = await service.create_session(app_name="test_app", user_id="user_123")
 
@@ -38,6 +40,7 @@ async def test_session_ttl_is_one_hour():
     with patch("masova_agent.core.redis_session_service.redis.Redis") as mock_cls:
         mock_cls.from_url = MagicMock(return_value=mock_redis)
         from masova_agent.core.redis_session_service import RedisSessionService
+
         service = RedisSessionService(redis_url="redis://localhost:6379/1")
         await service.create_session(app_name="test_app", user_id="user_123")
 
@@ -52,6 +55,7 @@ async def test_fallback_to_in_memory_when_redis_unavailable():
     with patch("masova_agent.core.redis_session_service.redis.Redis") as mock_cls:
         mock_cls.from_url.side_effect = Exception("Redis connection refused")
         from masova_agent.core.redis_session_service import RedisSessionService
+
         service = RedisSessionService(redis_url="redis://localhost:6379/1")
 
     assert service is not None

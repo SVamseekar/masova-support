@@ -5,6 +5,7 @@ Input: 90-day order history per menu item per hour per day-of-week
 Method: Weighted moving average (recent days weighted higher) + day-of-week seasonality
 Output: Writes to /api/analytics/forecast endpoint as daily_forecasts records
 """
+
 import httpx
 import logging
 from datetime import datetime, timedelta
@@ -17,9 +18,8 @@ logger = logging.getLogger(__name__)
 def _get_config():
     """Lazy import config to avoid circular imports."""
     from ..utils.config import get_config
+
     return get_config()
-
-
 
 
 DEMAND_INSTRUCTION = """You are MaSoVa Demand Forecast Agent (ops).
@@ -58,6 +58,7 @@ async def run_demand_forecast():
         prefer_llm=prefer,
     )
 
+
 async def _rule_run_demand_forecast() -> Dict[str, Any]:
     """Main entry point — called by APScheduler nightly at 2am."""
     config = _get_config()
@@ -77,15 +78,23 @@ async def _rule_run_demand_forecast() -> Dict[str, Any]:
             return {"error": "Could not fetch stores"}
 
         stores = stores_res.json()
-        store_ids = [s["id"] for s in ((stores if isinstance(stores, list) else stores.get('content') or []))]
+        store_ids = [
+            s["id"] for s in ((stores if isinstance(stores, list) else stores.get("content") or []))
+        ]
 
         total_forecasts = 0
         for store_id in store_ids:
             count = await _forecast_for_store(client, backend_url, headers, store_id)
             total_forecasts += count
 
-    logger.info("Demand forecast complete: %d forecasts for %d stores", total_forecasts, len(store_ids))
-    return {"forecasts": total_forecasts, "stores": len(store_ids), "generated_at": datetime.now().isoformat()}
+    logger.info(
+        "Demand forecast complete: %d forecasts for %d stores", total_forecasts, len(store_ids)
+    )
+    return {
+        "forecasts": total_forecasts,
+        "stores": len(store_ids),
+        "generated_at": datetime.now().isoformat(),
+    }
 
 
 async def _forecast_for_store(
@@ -107,7 +116,7 @@ async def _forecast_for_store(
         return 0
 
     orders = orders_res.json()
-    orders_list = (orders if isinstance(orders, list) else orders.get('content') or [])
+    orders_list = orders if isinstance(orders, list) else orders.get("content") or []
     if not orders_list:
         return 0
 
@@ -174,7 +183,9 @@ async def _forecast_for_store(
             else:
                 logger.warning(
                     "Failed to write forecast for item %s hour %d: %s",
-                    menu_item_id, hour, res.text[:100],
+                    menu_item_id,
+                    hour,
+                    res.text[:100],
                 )
 
     return forecasts_written

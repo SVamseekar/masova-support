@@ -1,11 +1,12 @@
 """Contract fixture sanity + tool parsing against fixture shapes."""
+
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 from masova_agent.auth import AgentIdentity, bind_identity, reset_identity
 from tests.fixtures.backend_contracts import (
@@ -159,9 +160,10 @@ class TestContractFixtures:
         from masova_agent.tools.backend_tools import cancel_order
         from tests.test_backend_tools import _mock_get, _mock_post
 
-        with patch("masova_agent.tools.backend_tools.httpx.get") as g, patch(
-            "masova_agent.tools.backend_tools.httpx.post"
-        ) as p:
+        with (
+            patch("masova_agent.tools.backend_tools.httpx.get") as g,
+            patch("masova_agent.tools.backend_tools.httpx.post") as p,
+        ):
             g.return_value = _mock_get(200, {"status": "RECEIVED"})
             p.return_value = _mock_post(200, SAMPLE_CANCEL_REQUEST_RESPONSE)
             text = cancel_order("ord-abc", "Changed my mind")
@@ -185,8 +187,9 @@ class TestOpsContractFixtures:
                 return 200, [SAMPLE_STORE_NESTED]
             return 404, {}
 
-        with patch.object(ops_tools, "get_json", side_effect=fake_get), patch.object(
-            ops_tools, "_require_token", return_value=None
+        with (
+            patch.object(ops_tools, "get_json", side_effect=fake_get),
+            patch.object(ops_tools, "_require_token", return_value=None),
         ):
             result = await ops_tools.list_low_stock("DOM001")
         assert result.get("ok") is True
@@ -197,8 +200,11 @@ class TestOpsContractFixtures:
     async def test_create_draft_po_returns_proposal_shape(self):
         from masova_agent.tools import ops_tools
 
-        with patch.object(ops_tools, "_require_token", return_value=None), patch.object(
-            ops_tools, "post_json", new_callable=AsyncMock, return_value=(201, SAMPLE_DRAFT_PO)
+        with (
+            patch.object(ops_tools, "_require_token", return_value=None),
+            patch.object(
+                ops_tools, "post_json", new_callable=AsyncMock, return_value=(201, SAMPLE_DRAFT_PO)
+            ),
         ):
             result = await ops_tools.create_draft_po(
                 store_id="DOM001",
@@ -227,8 +233,14 @@ class TestOpsContractFixtures:
     async def test_create_draft_campaign_fixture(self):
         from masova_agent.tools import ops_tools
 
-        with patch.object(ops_tools, "_require_token", return_value=None), patch.object(
-            ops_tools, "post_json", new_callable=AsyncMock, return_value=(201, SAMPLE_CAMPAIGN_DRAFT)
+        with (
+            patch.object(ops_tools, "_require_token", return_value=None),
+            patch.object(
+                ops_tools,
+                "post_json",
+                new_callable=AsyncMock,
+                return_value=(201, SAMPLE_CAMPAIGN_DRAFT),
+            ),
         ):
             result = await ops_tools.create_draft_campaign(
                 store_id="DOM001",
@@ -244,8 +256,14 @@ class TestOpsContractFixtures:
     async def test_create_draft_shifts_fixture(self):
         from masova_agent.tools import ops_tools
 
-        with patch.object(ops_tools, "_require_token", return_value=None), patch.object(
-            ops_tools, "post_json", new_callable=AsyncMock, return_value=(201, SAMPLE_SHIFT_BULK)
+        with (
+            patch.object(ops_tools, "_require_token", return_value=None),
+            patch.object(
+                ops_tools,
+                "post_json",
+                new_callable=AsyncMock,
+                return_value=(201, SAMPLE_SHIFT_BULK),
+            ),
         ):
             result = await ops_tools.create_draft_shifts(
                 store_id="DOM001",
@@ -266,9 +284,11 @@ class TestOpsContractFixtures:
             assert REQUIRED_NOTIFICATION_FIELDS <= set(body.keys()) or "title" in body
             return 201, SAMPLE_NOTIFICATION
 
-        with patch.object(ops_tools, "_require_token", return_value=None), patch.object(
-            ops_tools, "get_json", side_effect=fake_get
-        ), patch.object(ops_tools, "post_json", side_effect=fake_post):
+        with (
+            patch.object(ops_tools, "_require_token", return_value=None),
+            patch.object(ops_tools, "get_json", side_effect=fake_get),
+            patch.object(ops_tools, "post_json", side_effect=fake_post),
+        ):
             result = await ops_tools.notify_managers(
                 store_id="DOM001",
                 message="Draft PO ready",
@@ -281,8 +301,14 @@ class TestOpsContractFixtures:
     async def test_get_forecast_snippet_fixture(self):
         from masova_agent.tools import ops_tools
 
-        with patch.object(ops_tools, "_require_token", return_value=None), patch.object(
-            ops_tools, "get_json", new_callable=AsyncMock, return_value=(200, SAMPLE_FORECAST_SNIPPET)
+        with (
+            patch.object(ops_tools, "_require_token", return_value=None),
+            patch.object(
+                ops_tools,
+                "get_json",
+                new_callable=AsyncMock,
+                return_value=(200, SAMPLE_FORECAST_SNIPPET),
+            ),
         ):
             result = await ops_tools.get_forecast_snippet(store_id="DOM001")
         assert result.get("ok") is True or "points" in result or "forecast" in str(result)

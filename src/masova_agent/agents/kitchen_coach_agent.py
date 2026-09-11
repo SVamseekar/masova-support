@@ -5,6 +5,7 @@ Input: Today's kitchen metrics (avg prep time, ticket count, staff performance)
        via GET /api/analytics/orders and GET /api/orders/kitchen analytics endpoints
 Output: Nightly brief pushed as notification to managers + kitchen staff
 """
+
 import httpx
 import logging
 from datetime import datetime
@@ -33,13 +34,13 @@ COACHING_TIPS = {
         "Review tomorrow's forecast and prep stocks now to get ahead of the next rush.",
     ],
     "good_performance": [
-        "Great shift! Keep the momentum — remind the team to log any near-misses for tomorrow's briefing.",
+        "Great shift! Keep the momentum — remind the team to log any "
+        "near-misses for tomorrow's briefing.",
         "Excellent throughput today. Share what worked with the opening shift tomorrow.",
-        "Solid numbers. Consider rotating the highest-performer to mentor a trainee on tomorrow's shift.",
+        "Solid numbers. Consider rotating the highest-performer to mentor "
+        "a trainee on tomorrow's shift.",
     ],
 }
-
-
 
 
 KITCHEN_INSTRUCTION = """You are MaSoVa Kitchen Performance Coach (ops).
@@ -73,9 +74,11 @@ async def run_kitchen_coach():
         prefer_llm=prefer,
     )
 
+
 async def _rule_run_kitchen_coach() -> Dict[str, Any]:
     """Generate nightly kitchen performance brief and push to managers."""
     from ..utils.config import get_config
+
     config = get_config()
     backend_url = config.backend_url
     headers = {"Authorization": f"Bearer {config.agent_token}", "Content-Type": "application/json"}
@@ -99,16 +102,15 @@ async def _rule_run_kitchen_coach() -> Dict[str, Any]:
             full_message = f"{brief}\n\n💡 Tip: {tip}"
 
             # Notify managers
-            count = await _notify_managers(
-                client, backend_url, headers, store_id, full_message
-            )
+            count = await _notify_managers(client, backend_url, headers, store_id, full_message)
             notifications_sent += count
             stores_processed += 1
             logger.info("Kitchen Coach brief sent for store %s: %d notifications", store_id, count)
 
     logger.info(
         "Kitchen Coach complete: %d stores, %d notifications sent",
-        stores_processed, notifications_sent,
+        stores_processed,
+        notifications_sent,
     )
     return {
         "status": "ok",
@@ -122,6 +124,7 @@ async def _rule_run_kitchen_coach() -> Dict[str, Any]:
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 async def _get_stores(client, backend_url, headers) -> List[Dict]:
     res = await client.get(f"{backend_url}/api/stores", headers=headers)
     if res.status_code != 200:
@@ -132,9 +135,7 @@ async def _get_stores(client, backend_url, headers) -> List[Dict]:
     return data.get("content") or []
 
 
-async def _get_today_metrics(
-    client, backend_url, headers, store_id: str
-) -> Dict[str, Any] | None:
+async def _get_today_metrics(client, backend_url, headers, store_id: str) -> Dict[str, Any] | None:
     """
     Fetch today's order analytics for a store.
     Returns a normalised dict or None if unavailable.
@@ -184,7 +185,8 @@ def _build_brief(store_name: str, metrics: Dict) -> str:
 
     lines = [
         f"🍳 Kitchen Brief — {store_name} — {datetime.now().strftime('%d %b %Y')}",
-        f"Orders today: {ticket_count} | Completed: {completed} ({completion_rate}%) | Cancelled: {cancelled}",
+        f"Orders today: {ticket_count} | Completed: {completed} "
+        f"({completion_rate}%) | Cancelled: {cancelled}",
     ]
     if avg_prep:
         lines.append(f"Avg prep time: {avg_prep:.1f} min")
@@ -211,9 +213,7 @@ def _pick_tip(metrics: Dict) -> str:
     return tips[datetime.now().timetuple().tm_yday % len(tips)]
 
 
-async def _notify_managers(
-    client, backend_url, headers, store_id: str, message: str
-) -> int:
+async def _notify_managers(client, backend_url, headers, store_id: str, message: str) -> int:
     managers_res = await client.get(
         f"{backend_url}/api/users?type=MANAGER&storeId={store_id}", headers=headers
     )
@@ -221,6 +221,7 @@ async def _notify_managers(
         return 0
 
     from . import _unwrap
+
     count = 0
     for manager in _unwrap(managers_res.json()):
         res = await client.post(

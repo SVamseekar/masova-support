@@ -10,7 +10,6 @@ from __future__ import annotations
 import logging
 import threading
 from collections import defaultdict
-from typing import Any
 
 logger = logging.getLogger("masova_agent.metrics")
 

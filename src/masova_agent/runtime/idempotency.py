@@ -130,7 +130,7 @@ def _redis_set(key: str, payload: dict[str, Any], ttl_sec: int) -> None:
         return
     try:
         import json
-        import redis  # type: ignore
+        import redis
 
         host = os.getenv("REDIS_HOST", "127.0.0.1")
         port = int(os.getenv("REDIS_PORT", "6379"))

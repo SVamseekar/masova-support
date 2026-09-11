@@ -1,6 +1,7 @@
 """
 Pytest configuration for masova-support tests.
 """
+
 import sys
 from pathlib import Path
 

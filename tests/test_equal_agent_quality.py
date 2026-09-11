@@ -4,6 +4,7 @@ Equal industry-quality bar across agents 1–8.
 Covers: allowlist/EXECUTE policy, fallback when LLM fails, WMA as compute source,
 pricing never PATCHes menu, idempotency on propose tools, audit fields, runtime entry.
 """
+
 import sys
 from pathlib import Path
 
@@ -14,7 +15,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from masova_agent.runtime.idempotency import clear_for_tests, make_key, check_or_claim
 from masova_agent.runtime.wrap import AGENT_ALLOWLISTS
-from masova_agent.runtime.policy import DEFAULT_TOOL_REGISTRY, PolicyEngine, RiskTier
+from masova_agent.runtime.policy import PolicyEngine, RiskTier
 from masova_agent.runtime.agent_runtime import get_runtime, reset_runtime_for_tests
 from masova_agent.runtime.models import AgentRunRequest
 
@@ -37,6 +38,7 @@ def _no_llm(monkeypatch):
 # ---------------------------------------------------------------------------
 # Shared bar: tools / EXECUTE
 # ---------------------------------------------------------------------------
+
 
 class TestEqualToolPolicy:
     def test_all_ops_agents_have_allowlists(self):
@@ -71,6 +73,7 @@ class TestEqualToolPolicy:
 # Idempotency
 # ---------------------------------------------------------------------------
 
+
 class TestIdempotency:
     def test_second_claim_is_duplicate(self):
         key = make_key("inventory_reorder", "DOM001", "draft_po", window="hour", extra="sup-1")
@@ -84,9 +87,12 @@ class TestIdempotency:
     async def test_create_draft_po_skips_duplicate(self):
         from masova_agent.tools import ops_tools
 
-        with patch.object(ops_tools, "_require_token", return_value=None), patch.object(
-            ops_tools, "post_json", new_callable=AsyncMock, return_value=(201, {"id": "po-1"})
-        ) as post:
+        with (
+            patch.object(ops_tools, "_require_token", return_value=None),
+            patch.object(
+                ops_tools, "post_json", new_callable=AsyncMock, return_value=(201, {"id": "po-1"})
+            ) as post,
+        ):
             items = [{"id": "inv-1", "name": "Flour", "quantity": 10, "unitCost": 1}]
             r1 = await ops_tools.create_draft_po("DOM001", "sup-1", items=items)
             r2 = await ops_tools.create_draft_po("DOM001", "sup-1", items=items)
@@ -98,9 +104,12 @@ class TestIdempotency:
     async def test_create_draft_campaign_idempotent(self):
         from masova_agent.tools import ops_tools
 
-        with patch.object(ops_tools, "_require_token", return_value=None), patch.object(
-            ops_tools, "post_json", new_callable=AsyncMock, return_value=(201, {"id": "c1"})
-        ) as post:
+        with (
+            patch.object(ops_tools, "_require_token", return_value=None),
+            patch.object(
+                ops_tools, "post_json", new_callable=AsyncMock, return_value=(201, {"id": "c1"})
+            ) as post,
+        ):
             r1 = await ops_tools.create_draft_campaign(
                 "DOM001", customer_ids=["a", "b"], message="hi"
             )
@@ -115,6 +124,7 @@ class TestIdempotency:
 # ---------------------------------------------------------------------------
 # Agent 2 demand — WMA source of truth
 # ---------------------------------------------------------------------------
+
 
 class TestDemandEqualBar:
     @pytest.mark.asyncio
@@ -152,7 +162,11 @@ class TestDemandEqualBar:
         runtime = get_runtime()
 
         async def fb():
-            return {"status": "ok", "summary": "demand done", "tools_used": ["compute_wma_forecast"]}
+            return {
+                "status": "ok",
+                "summary": "demand done",
+                "tools_used": ["compute_wma_forecast"],
+            }
 
         res = await runtime.run(
             AgentRunRequest(
@@ -174,6 +188,7 @@ class TestDemandEqualBar:
 # Agents 3–7 golden scenarios
 # ---------------------------------------------------------------------------
 
+
 class TestInventoryEqualBar:
     @pytest.mark.asyncio
     async def test_no_token_rule_path_errors_cleanly(self):
@@ -191,16 +206,19 @@ class TestChurnEqualBar:
         from masova_agent.agents.churn_prevention_agent import run_churn_prevention
 
         client = AsyncMock()
-        client.get = AsyncMock(side_effect=[
-            MagicMock(status_code=200, json=lambda: [{"id": "s1"}], text="[]"),
-            MagicMock(status_code=200, json=lambda: {"content": []}, text="{}"),
-        ])
+        client.get = AsyncMock(
+            side_effect=[
+                MagicMock(status_code=200, json=lambda: [{"id": "s1"}], text="[]"),
+                MagicMock(status_code=200, json=lambda: {"content": []}, text="{}"),
+            ]
+        )
         ctx = MagicMock()
         ctx.__aenter__ = AsyncMock(return_value=client)
         ctx.__aexit__ = AsyncMock(return_value=False)
         cfg = MagicMock(backend_url="http://test", agent_token="tok", google_api_key="k")
-        with patch("masova_agent.utils.config.get_config", return_value=cfg), patch(
-            "masova_agent.agents.churn_prevention_agent.httpx.AsyncClient", return_value=ctx
+        with (
+            patch("masova_agent.utils.config.get_config", return_value=cfg),
+            patch("masova_agent.agents.churn_prevention_agent.httpx.AsyncClient", return_value=ctx),
         ):
             result = await run_churn_prevention()
         assert result.get("campaigns_created", 0) == 0
@@ -236,15 +254,22 @@ class TestKitchenEqualBar:
     def test_brief_uses_metric_numbers(self):
         from masova_agent.agents.kitchen_coach_agent import _build_brief
 
-        brief = _build_brief("Store", {
-            "ticket_count": 99, "avg_prep_minutes": 12, "completed": 90, "cancelled": 1,
-        })
+        brief = _build_brief(
+            "Store",
+            {
+                "ticket_count": 99,
+                "avg_prep_minutes": 12,
+                "completed": 90,
+                "cancelled": 1,
+            },
+        )
         assert "99" in brief and "12" in brief
 
 
 # ---------------------------------------------------------------------------
 # Agent 8 pricing — never menu PATCH
 # ---------------------------------------------------------------------------
+
 
 class TestPricingEqualBar:
     def test_allowlist_has_no_patch(self):
@@ -266,9 +291,11 @@ class TestPricingEqualBar:
         async def managers(client, path, params=None):
             return 200, {"content": [{"id": "mgr-1"}]}
 
-        with patch.object(ops_tools, "_require_token", return_value=None), patch.object(
-            ops_tools, "get_json", side_effect=managers
-        ), patch.object(ops_tools, "post_json", side_effect=capture_post):
+        with (
+            patch.object(ops_tools, "_require_token", return_value=None),
+            patch.object(ops_tools, "get_json", side_effect=managers),
+            patch.object(ops_tools, "post_json", side_effect=capture_post),
+        ):
             r = await ops_tools.propose_price_suggestion(
                 store_id="DOM001",
                 direction="increase",
@@ -299,6 +326,7 @@ class TestPricingEqualBar:
 # ---------------------------------------------------------------------------
 # Chat bar regression
 # ---------------------------------------------------------------------------
+
 
 class TestChatEqualBar:
     def test_chat_allowlist_identity_tools(self):

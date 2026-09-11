@@ -4,6 +4,7 @@ Schedule: Daily at 10am IST
 Input: Customers with >3 orders in last 60 days AND no order in last 14 days (churned high-value)
 Output: DRAFT campaign targeting these customers with personalised message + discount offer
 """
+
 import httpx
 import logging
 from datetime import datetime, timedelta
@@ -15,8 +16,6 @@ CHURN_WINDOW_DAYS = 14
 QUALIFYING_ORDER_COUNT = 3
 QUALIFYING_PERIOD_DAYS = 60
 RECOVERY_DISCOUNT_PERCENT = 15
-
-
 
 
 CHURN_INSTRUCTION = """You are MaSoVa Churn Prevention Agent (ops).
@@ -52,8 +51,10 @@ async def run_churn_prevention():
         prefer_llm=prefer,
     )
 
+
 async def _rule_run_churn_prevention() -> Dict[str, Any]:
     from ..utils.config import get_config
+
     config = get_config()
     backend_url = config.backend_url
 
@@ -71,7 +72,9 @@ async def _rule_run_churn_prevention() -> Dict[str, Any]:
 
         for store in stores:
             store_id = store["id"]
-            churned_customers = await _find_churned_customers(client, backend_url, headers, store_id)
+            churned_customers = await _find_churned_customers(
+                client, backend_url, headers, store_id
+            )
 
             if not churned_customers:
                 continue
@@ -91,7 +94,8 @@ async def _rule_run_churn_prevention() -> Dict[str, Any]:
                 "customerIds": [c["id"] for c in churned_customers],
                 "discountPercent": RECOVERY_DISCOUNT_PERCENT,
                 "message": (
-                    f"We miss you! Come back and enjoy {RECOVERY_DISCOUNT_PERCENT}% off your next order. "
+                    f"We miss you! Come back and enjoy "
+                    f"{RECOVERY_DISCOUNT_PERCENT}% off your next order. "
                     f"Our {', '.join(top_item_names)} are waiting for you."
                 ),
                 "expiresInDays": 7,
@@ -108,17 +112,28 @@ async def _rule_run_churn_prevention() -> Dict[str, Any]:
             if res.status_code in (200, 201):
                 campaigns_created += 1
                 await _notify_managers(
-                    client, backend_url, headers, store_id,
-                    f"Churn Alert: {len(churned_customers)} high-value customers haven't ordered in "
-                    f"{CHURN_WINDOW_DAYS}+ days. A win-back campaign draft is ready for your review.",
+                    client,
+                    backend_url,
+                    headers,
+                    store_id,
+                    f"Churn Alert: {len(churned_customers)} high-value customers "
+                    f"haven't ordered in {CHURN_WINDOW_DAYS}+ days. "
+                    "A win-back campaign draft is ready for your review.",
                 )
 
-    logger.info("Churn prevention complete: %d campaigns, %d customers", campaigns_created, customers_targeted)
+    logger.info(
+        "Churn prevention complete: %d campaigns, %d customers",
+        campaigns_created,
+        customers_targeted,
+    )
     return {"campaigns_created": campaigns_created, "customers_targeted": customers_targeted}
 
 
 async def _find_churned_customers(
-    client: httpx.AsyncClient, backend_url: str, headers: dict, store_id: str,
+    client: httpx.AsyncClient,
+    backend_url: str,
+    headers: dict,
+    store_id: str,
 ) -> List[Dict]:
     """Find customers who ordered >3 times in last 60 days but not in last 14 days."""
     res = await client.get(
@@ -128,7 +143,7 @@ async def _find_churned_customers(
     )
     if res.status_code == 200:
         data = res.json()
-        return data if isinstance(data, list) else data.get('content') or []
+        return data if isinstance(data, list) else data.get("content") or []
 
     # Fallback: get all customers and filter in Python
     all_res = await client.get(
@@ -140,6 +155,7 @@ async def _find_churned_customers(
         return []
 
     from . import _unwrap
+
     all_customers = _unwrap(all_res.json())
     churn_cutoff = datetime.now() - timedelta(days=CHURN_WINDOW_DAYS)
 
@@ -156,7 +172,10 @@ async def _find_churned_customers(
 
 
 async def _get_top_items(
-    client: httpx.AsyncClient, backend_url: str, headers: dict, store_id: str,
+    client: httpx.AsyncClient,
+    backend_url: str,
+    headers: dict,
+    store_id: str,
 ) -> List[Dict]:
     res = await client.get(
         f"{backend_url}/api/analytics/products",
@@ -191,6 +210,7 @@ async def _notify_managers(
     if managers_res.status_code != 200:
         return
     from . import _unwrap
+
     for manager in _unwrap(managers_res.json()):
         await client.post(
             f"{backend_url}/api/notifications",

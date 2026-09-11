@@ -8,19 +8,20 @@ Output: DRAFT price adjustment notification to manager — agent NEVER changes p
 LLM path: only when overload/underload signal exists; tool loop proposes notifications.
 Fallback: threshold messages (same caps).
 """
+
 import httpx
 import logging
 from datetime import datetime, timedelta
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List
 
 logger = logging.getLogger(__name__)
 
 # Thresholds
-OVERLOAD_ACTIVE_ORDERS = 15       # > this → suggest price increase on top sellers
-UNDERLOAD_ORDERS_30MIN = 3        # < this in last 30 min → suggest discount on slow items
-PRICE_INCREASE_PCT = 12           # % increase suggestion for overloaded kitchen
-PRICE_DISCOUNT_PCT = 15           # % discount suggestion for slow periods
-STORE_CLOSE_HOUR = 22             # 10pm IST — don't suggest discounts if <2h to close
+OVERLOAD_ACTIVE_ORDERS = 15  # > this → suggest price increase on top sellers
+UNDERLOAD_ORDERS_30MIN = 3  # < this in last 30 min → suggest discount on slow items
+PRICE_INCREASE_PCT = 12  # % increase suggestion for overloaded kitchen
+PRICE_DISCOUNT_PCT = 15  # % discount suggestion for slow periods
+STORE_CLOSE_HOUR = 22  # 10pm IST — don't suggest discounts if <2h to close
 MIN_HOURS_BEFORE_CLOSE = 2
 
 PRICING_INSTRUCTION = """You are MaSoVa Dynamic Pricing Agent (ops).
@@ -85,7 +86,9 @@ async def _pricing_pre_gate(request):
             "skipped_llm": True,
             "tools_used": ["compute_pricing_signal"],
             "proposals": [],
-            "signals": [{"store_id": s.get("store_id"), "signal": s.get("signal")} for s in signals],
+            "signals": [
+                {"store_id": s.get("store_id"), "signal": s.get("signal")} for s in signals
+            ],
         }
     # Attach signals for the LLM context
     request.context = dict(request.context or {})
@@ -123,6 +126,7 @@ async def run_dynamic_pricing():
 async def _rule_run_dynamic_pricing() -> Dict[str, Any]:
     """Suggest price adjustments based on real-time demand vs capacity."""
     from ..utils.config import get_config
+
     config = get_config()
     backend_url = config.backend_url
     headers = {"Authorization": f"Bearer {config.agent_token}", "Content-Type": "application/json"}
@@ -141,7 +145,9 @@ async def _rule_run_dynamic_pricing() -> Dict[str, Any]:
 
             # Evaluate demand state for this store
             active_count = await _count_active_orders(client, backend_url, headers, store_id)
-            recent_count = await _count_recent_orders(client, backend_url, headers, store_id, minutes=30)
+            recent_count = await _count_recent_orders(
+                client, backend_url, headers, store_id, minutes=30
+            )
             stores_evaluated += 1
 
             hours_to_close = STORE_CLOSE_HOUR - current_hour
@@ -150,20 +156,20 @@ async def _rule_run_dynamic_pricing() -> Dict[str, Any]:
                 # Kitchen overloaded → suggest price increase on top 5 items
                 top_items = await _get_top_items(client, backend_url, headers, store_id, limit=5)
                 if top_items:
-                    message = _overload_message(store_name, active_count, top_items, PRICE_INCREASE_PCT)
+                    message = _overload_message(
+                        store_name, active_count, top_items, PRICE_INCREASE_PCT
+                    )
                     sent = await _notify_managers(
                         client, backend_url, headers, store_id, message, priority="HIGH"
                     )
                     suggestions_sent += sent
                     logger.info(
                         "Dynamic Pricing: overload suggestion for store %s (%d active orders)",
-                        store_id, active_count,
+                        store_id,
+                        active_count,
                     )
 
-            elif (
-                recent_count < UNDERLOAD_ORDERS_30MIN
-                and hours_to_close >= MIN_HOURS_BEFORE_CLOSE
-            ):
+            elif recent_count < UNDERLOAD_ORDERS_30MIN and hours_to_close >= MIN_HOURS_BEFORE_CLOSE:
                 # Slow period with time remaining → suggest discount on slow-moving items
                 slow_items = await _get_slow_items(client, backend_url, headers, store_id, limit=5)
                 if slow_items:
@@ -175,25 +181,33 @@ async def _rule_run_dynamic_pricing() -> Dict[str, Any]:
                     )
                     suggestions_sent += sent
                     logger.info(
-                        "Dynamic Pricing: slow-period discount suggestion for store %s (%d orders/30min)",
-                        store_id, recent_count,
+                        "Dynamic Pricing: slow-period discount suggestion "
+                        "for store %s (%d orders/30min)",
+                        store_id,
+                        recent_count,
                     )
             else:
                 logger.debug(
                     "Dynamic Pricing: no action for store %s (active=%d, recent=%d)",
-                    store_id, active_count, recent_count,
+                    store_id,
+                    active_count,
+                    recent_count,
                 )
 
     logger.info(
         "Dynamic Pricing run complete: %d stores evaluated, %d suggestions sent",
-        stores_evaluated, suggestions_sent,
+        stores_evaluated,
+        suggestions_sent,
     )
     return {
         "status": "ok",
         "stores_evaluated": stores_evaluated,
         "suggestions_sent": suggestions_sent,
         "evaluated_at": datetime.now().isoformat(),
-        "summary": f"Rule fallback: {suggestions_sent} suggestion(s) across {stores_evaluated} store(s)",
+        "summary": (
+            f"Rule fallback: {suggestions_sent} suggestion(s) "
+            f"across {stores_evaluated} store(s)"
+        ),
     }
 
 
@@ -201,11 +215,13 @@ async def _rule_run_dynamic_pricing() -> Dict[str, Any]:
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 async def _get_stores(client, backend_url, headers) -> List[Dict]:
     res = await client.get(f"{backend_url}/api/stores", headers=headers)
     if res.status_code != 200:
         return []
     from . import _unwrap
+
     return _unwrap(res.json())
 
 
@@ -224,9 +240,7 @@ async def _count_active_orders(client, backend_url, headers, store_id: str) -> i
     return total
 
 
-async def _count_recent_orders(
-    client, backend_url, headers, store_id: str, minutes: int
-) -> int:
+async def _count_recent_orders(client, backend_url, headers, store_id: str, minutes: int) -> int:
     """Count orders placed in the last N minutes."""
     since = (datetime.now() - timedelta(minutes=minutes)).isoformat()
     res = await client.get(
@@ -240,9 +254,7 @@ async def _count_recent_orders(
     return data.get("totalElements", len(items))
 
 
-async def _get_top_items(
-    client, backend_url, headers, store_id: str, limit: int
-) -> List[Dict]:
+async def _get_top_items(client, backend_url, headers, store_id: str, limit: int) -> List[Dict]:
     """Top selling items by volume today."""
     res = await client.get(
         f"{backend_url}/api/analytics/products?storeId={store_id}",
@@ -255,9 +267,7 @@ async def _get_top_items(
     return items[:limit]
 
 
-async def _get_slow_items(
-    client, backend_url, headers, store_id: str, limit: int
-) -> List[Dict]:
+async def _get_slow_items(client, backend_url, headers, store_id: str, limit: int) -> List[Dict]:
     """Items with low order volume today — candidates for a discount nudge."""
     res = await client.get(
         f"{backend_url}/api/menu?storeId={store_id}&available=true",
@@ -266,6 +276,7 @@ async def _get_slow_items(
     if res.status_code != 200:
         return []
     from . import _unwrap
+
     all_items = _unwrap(res.json())
 
     # Get top items to exclude them from slow candidates
@@ -312,6 +323,7 @@ async def _notify_managers(
         return 0
 
     from . import _unwrap
+
     count = 0
     for manager in _unwrap(managers_res.json()):
         res = await client.post(

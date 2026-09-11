@@ -2,7 +2,7 @@
 Data repositories for MaSoVa Agent
 """
 from typing import Optional, List
-from .models import Customer, Order, CustomerTier, OrderStatus
+from .models import Customer, Order, OrderStatus
 
 
 class CustomerRepository:
@@ -62,7 +62,8 @@ class CustomerRepository:
             (k for k, v in self._customers.items() if v["customerId"] == customer.customer_id),
             None,
         )
-        key = existing or f"c{max((int(k[1:]) for k in self._customers if k[1:].isdigit()), default=0) + 1}"
+        nxt = max((int(k[1:]) for k in self._customers if k[1:].isdigit()), default=0) + 1
+        key = existing or f"c{nxt}"
         self._customers[key] = customer.to_dict()
 
 
@@ -136,5 +137,6 @@ class OrderRepository:
             (k for k, v in self._orders.items() if v["orderId"] == order.order_id),
             None,
         )
-        key = existing or f"ord{max((int(k[3:]) for k in self._orders if k[3:].isdigit()), default=0) + 1}"
+        nxt = max((int(k[3:]) for k in self._orders if k[3:].isdigit()), default=0) + 1
+        key = existing or f"ord{nxt}"
         self._orders[key] = order.to_dict()
