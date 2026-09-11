@@ -23,6 +23,7 @@ from .policy import PolicyEngine
 from . import proposal_store
 from . import metrics
 from . import run_store
+from . import circuit
 
 logger = logging.getLogger(__name__)
 
@@ -68,16 +69,24 @@ class AgentRuntime:
         try:
             llm_result: dict[str, Any] | None = None
             if request.prefer_llm and request.llm_runner is not None:
-                try:
-                    llm_result = await self._call_maybe_async(request.llm_runner, request)
-                except Exception as e:
-                    logger.warning(
-                        "LLM path failed for %s: %s — using fallback",
-                        request.agent_name,
-                        e,
-                    )
+                if not circuit.allow_llm(request.agent_name):
+                    logger.info("LLM circuit open for %s — using fallback", request.agent_name)
                     llm_result = None
-                    error = f"llm_failed:{type(e).__name__}"
+                    error = "llm_failed:circuit_open"
+                else:
+                    try:
+                        llm_result = await self._call_maybe_async(request.llm_runner, request)
+                        circuit.record_success(request.agent_name)
+                    except Exception as e:
+                        if str(e) != "circuit_open":
+                            circuit.record_failure(request.agent_name)
+                        logger.warning(
+                            "LLM path failed for %s: %s — using fallback",
+                            request.agent_name,
+                            e,
+                        )
+                        llm_result = None
+                        error = f"llm_failed:{type(e).__name__}"
 
             if llm_result is not None:
                 output = dict(llm_result)
