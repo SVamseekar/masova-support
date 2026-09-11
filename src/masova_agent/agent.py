@@ -113,8 +113,13 @@ async def send_message_async(
     primary path; on total failure a safe fallback message is returned.
     """
     from .runtime.wrap import run_ops_agent, AGENT_ALLOWLISTS
+    from .runtime.guardrails import screen_input, screen_output
 
     actual_session_id = await _ensure_session(user_id, session_id)
+
+    screened, blocked = screen_input(message)
+    if blocked:
+        return "I can't help with that request.", actual_session_id
 
     async def _adk_path():
         runner = Runner(
@@ -124,7 +129,7 @@ async def send_message_async(
         )
         user_content = genai_types.Content(
             role="user",
-            parts=[genai_types.Part(text=message)],
+            parts=[genai_types.Part(text=screened)],
         )
         response_text = ""
         for event in runner.run(
@@ -162,7 +167,7 @@ async def send_message_async(
         "support_chat",
         "chat",
         _fallback,
-        goal=message[:500],
+        goal=screened[:500],
         context={"user_id": user_id, "session_id": actual_session_id},
         llm_runner=lambda _req: _adk_path(),
         prefer_llm=True,
@@ -173,7 +178,7 @@ async def send_message_async(
             "I'm having trouble reaching our systems right now. "
             "Please try again shortly, or contact support@masova.com / 1800-MASOVA."
         )
-    return reply, actual_session_id
+    return screen_output(reply), actual_session_id
 
 
 def send_message(
