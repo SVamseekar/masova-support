@@ -14,13 +14,15 @@ import logging
 from datetime import datetime, timedelta
 from typing import Dict, Any, List
 
-logger = logging.getLogger(__name__)
+from ..runtime.ops_contract import (
+    OVERLOAD_ACTIVE_ORDERS,
+    PRICE_DISCOUNT_PCT_MAX as PRICE_DISCOUNT_PCT,
+    PRICE_INCREASE_PCT_MAX as PRICE_INCREASE_PCT,
+    UNDERLOAD_ORDERS_30MIN,
+    clamp_price_delta,
+)
 
-# Thresholds
-OVERLOAD_ACTIVE_ORDERS = 15  # > this → suggest price increase on top sellers
-UNDERLOAD_ORDERS_30MIN = 3  # < this in last 30 min → suggest discount on slow items
-PRICE_INCREASE_PCT = 12  # % increase suggestion for overloaded kitchen
-PRICE_DISCOUNT_PCT = 15  # % discount suggestion for slow periods
+logger = logging.getLogger(__name__)
 STORE_CLOSE_HOUR = 22  # 10pm IST — don't suggest discounts if <2h to close
 MIN_HOURS_BEFORE_CLOSE = 2
 
@@ -290,6 +292,12 @@ async def _get_slow_items(client, backend_url, headers, store_id: str, limit: in
 def _overload_message(
     store_name: str, active_count: int, items: List[Dict], increase_pct: int
 ) -> str:
+    for item in items:
+        current = item.get("price")
+        if current is not None:
+            item["price"] = clamp_price_delta(
+                float(current), float(current) * (1 + increase_pct / 100), "increase"
+            )
     item_names = ", ".join(i.get("name", "?") for i in items)
     return (
         f"🔴 Kitchen Overload — {store_name}\n"

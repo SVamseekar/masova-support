@@ -15,14 +15,16 @@ from typing import Any, Optional
 import httpx
 
 from .ops_http import agent_token, get_json, post_json, unwrap_list
+from ..runtime.ops_contract import (
+    OVERLOAD_ACTIVE_ORDERS,
+    PRICE_DISCOUNT_PCT_MAX,
+    PRICE_INCREASE_PCT_MAX,
+    UNDERLOAD_ORDERS_30MIN,
+    clamp_po_quantity,
+    clamp_price_delta,
+)
 
 logger = logging.getLogger(__name__)
-
-# Pricing bounds (must match dynamic_pricing_agent constants)
-PRICE_INCREASE_PCT_MAX = 12
-PRICE_DISCOUNT_PCT_MAX = 15
-OVERLOAD_ACTIVE_ORDERS = 15
-UNDERLOAD_ORDERS_30MIN = 3
 
 
 def _proposal(
@@ -543,13 +545,15 @@ async def create_draft_po(
     for it in items:
         if not isinstance(it, dict):
             continue
+        reorder = float(it.get("reorder_quantity") or it.get("reorderQuantity") or 10)
+        requested = float(it.get("quantity") or reorder)
         po_items.append(
             {
                 "inventoryItemId": it.get("inventory_item_id")
                 or it.get("id")
                 or it.get("inventoryItemId"),
                 "itemName": it.get("item_name") or it.get("itemName") or it.get("name", "Unknown"),
-                "quantity": it.get("quantity") or it.get("reorder_quantity") or 10,
+                "quantity": clamp_po_quantity(requested, reorder),
                 "unitCost": it.get("unit_cost") or it.get("unitCost") or 0,
             }
         )
@@ -675,11 +679,17 @@ async def propose_price_suggestion(
     if direction not in ("increase", "discount", "decrease"):
         return {"ok": False, "error": "direction must be increase or discount"}
 
+    unit = 100.0
+    raw = abs(float(percent))
     if direction == "increase":
-        pct = min(abs(float(percent)), PRICE_INCREASE_PCT_MAX)
+        suggested = unit * (1 + raw / 100)
+        capped = clamp_price_delta(unit, suggested, "increase")
+        pct = round((capped / unit - 1) * 100, 4)
         direction = "increase"
     else:
-        pct = min(abs(float(percent)), PRICE_DISCOUNT_PCT_MAX)
+        suggested = unit * (1 - raw / 100)
+        capped = clamp_price_delta(unit, suggested, "decrease")
+        pct = round((1 - capped / unit) * 100, 4)
         direction = "discount"
 
     from ..runtime.idempotency import check_or_claim, make_key

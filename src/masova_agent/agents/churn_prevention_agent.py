@@ -10,11 +10,14 @@ import logging
 from datetime import datetime, timedelta
 from typing import Dict, Any, List
 
+from ..runtime.ops_contract import (
+    CHURN_INACTIVE_DAYS as CHURN_WINDOW_DAYS,
+    CHURN_LOOKBACK_DAYS as QUALIFYING_PERIOD_DAYS,
+    CHURN_MIN_ORDERS as QUALIFYING_ORDER_COUNT,
+)
+
 logger = logging.getLogger(__name__)
 
-CHURN_WINDOW_DAYS = 14
-QUALIFYING_ORDER_COUNT = 3
-QUALIFYING_PERIOD_DAYS = 60
 RECOVERY_DISCOUNT_PERCENT = 15
 
 
@@ -135,7 +138,7 @@ async def _find_churned_customers(
     headers: dict,
     store_id: str,
 ) -> List[Dict]:
-    """Find customers who ordered >3 times in last 60 days but not in last 14 days."""
+    """Find customers with enough orders in the lookback window and no recent order."""
     res = await client.get(
         f"{backend_url}/api/customers",
         params={"storeId": store_id, "filter": "CHURNED_HIGH_VALUE"},
@@ -157,7 +160,9 @@ async def _find_churned_customers(
     from . import _unwrap
 
     all_customers = _unwrap(all_res.json())
-    churn_cutoff = datetime.now() - timedelta(days=CHURN_WINDOW_DAYS)
+    now = datetime.now()
+    churn_cutoff = now - timedelta(days=CHURN_WINDOW_DAYS)
+    lookback_cutoff = now - timedelta(days=QUALIFYING_PERIOD_DAYS)
 
     churned = []
     for customer in all_customers:
@@ -165,7 +170,9 @@ async def _find_churned_customers(
         total_orders = customer.get("totalOrders", 0)
         if last_order and total_orders >= QUALIFYING_ORDER_COUNT:
             last_order_dt = datetime.fromisoformat(last_order.replace("Z", "+00:00"))
-            if last_order_dt < churn_cutoff:
+            if last_order_dt.tzinfo:
+                last_order_dt = last_order_dt.replace(tzinfo=None)
+            if lookback_cutoff <= last_order_dt < churn_cutoff:
                 churned.append(customer)
 
     return churned
