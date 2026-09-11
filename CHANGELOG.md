@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-09-11
+
+First Git-tagged release. Changelog versions 0.1.0–0.4.0 were never tagged; those tags were not backfilled.
+
 ### Added
 - Release process (`docs/RELEASING.md`), `LICENSE`, `SECURITY.md`, repository hygiene check
 - Ops multi-step GenAI tool loops (`runtime/ops_llm.py`, `tools/ops_tools.py`) for agents 2–8
@@ -21,7 +25,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - Equal quality bar documented for all 8 agents (fallback, audit, signal gates)
 - Production env budgets: `OPS_MAX_TOOL_CALLS`, `OPS_CONTEXT_CHARS`, `OPS_PREFER_LLM`, `OPS_LLM_MODEL`
-- `pyproject.toml` version aligned to last changelog release **0.4.0** (no Git tag backfill)
 - Environment templates use localhost placeholders (not machine-specific hosts)
 - CI required gates: Black, flake8, mypy, wheel build, hygiene, pytest, pip-audit
 - Removed historical `MIGRATION.md` (layout is documented in README)
