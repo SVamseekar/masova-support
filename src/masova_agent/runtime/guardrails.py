@@ -3,6 +3,7 @@
 Fail-open: callers should catch exceptions and pass the message through
 unmodified while logging a warning (see spec §10).
 """
+
 from __future__ import annotations
 
 import logging
