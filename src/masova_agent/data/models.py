@@ -1,6 +1,7 @@
 """
 Data models for MaSoVa Agent
 """
+
 from dataclasses import dataclass
 from enum import Enum
 from typing import Optional
@@ -9,6 +10,7 @@ from datetime import datetime
 
 class CustomerTier(Enum):
     """Customer tier levels"""
+
     BRONZE = "BRONZE"
     SILVER = "SILVER"
     GOLD = "GOLD"
@@ -17,6 +19,7 @@ class CustomerTier(Enum):
 
 class OrderStatus(Enum):
     """Order status states"""
+
     PENDING = "PENDING"
     CONFIRMED = "CONFIRMED"
     PREPARING = "PREPARING"
@@ -28,6 +31,7 @@ class OrderStatus(Enum):
 @dataclass
 class Customer:
     """Customer data model"""
+
     customer_id: str
     name: str
     tier: CustomerTier
@@ -63,6 +67,7 @@ class Customer:
 @dataclass
 class Order:
     """Order data model"""
+
     order_id: str
     customer_id: str
     item: str
@@ -99,6 +104,7 @@ class Order:
 @dataclass
 class Location:
     """Geographic location data"""
+
     city: str
     country: str
     latitude: Optional[float] = None

@@ -1,6 +1,7 @@
 """
 Data repositories for MaSoVa Agent
 """
+
 from typing import Optional, List
 from .models import Customer, Order, OrderStatus
 
@@ -17,7 +18,7 @@ class CustomerRepository:
                 "tier": "GOLD",
                 "loyaltyPoints": 1250,
                 "email": "soura@masova.com",
-                "phone": "+91-9876543210"
+                "phone": "+91-9876543210",
             }
         }
 
@@ -79,7 +80,7 @@ class OrderRepository:
                 "item": "Chicken Biryani",
                 "status": "OUT_FOR_DELIVERY",
                 "quantity": 1,
-                "totalAmount": 299.00
+                "totalAmount": 299.00,
             }
         }
 

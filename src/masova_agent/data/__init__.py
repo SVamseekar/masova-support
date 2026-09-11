@@ -1,4 +1,5 @@
 """Data layer for MaSoVa Agent"""
+
 from .models import Customer, Order, Location, CustomerTier, OrderStatus
 from .repositories import CustomerRepository, OrderRepository
 
