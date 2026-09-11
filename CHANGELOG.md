@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Release process (`docs/RELEASING.md`), `LICENSE`, `SECURITY.md`, repository hygiene check
 - Ops multi-step GenAI tool loops (`runtime/ops_llm.py`, `tools/ops_tools.py`) for agents 2–8
 - `docs/CAPABILITY_MAP.md` — full tool ↔ HTTP ↔ platform service map
 - Expanded backend contract fixtures + tests (shared-models order statuses, inventory, PO, campaign, shifts)
@@ -20,6 +21,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - Equal quality bar documented for all 8 agents (fallback, audit, signal gates)
 - Production env budgets: `OPS_MAX_TOOL_CALLS`, `OPS_CONTEXT_CHARS`, `OPS_PREFER_LLM`, `OPS_LLM_MODEL`
+- `pyproject.toml` version aligned to last changelog release **0.4.0** (no Git tag backfill)
+- Environment templates use localhost placeholders (not machine-specific hosts)
+- CI: SHA-pinned Actions, hygiene gate, flake8 syntax/undefined-name checks, package import, pip-audit
 
 ## [0.4.0] - 2026-08-08
 

@@ -36,8 +36,7 @@ masova-support/
 │   └── run-tests.sh
 ├── docs/                # Documentation
 │   ├── ARCHITECTURE.md
-│   ├── CONTRIBUTING.md
-│   └── PROJECT_PHASES.md
+│   └── CONTRIBUTING.md
 ├── config/              # Configuration
 │   ├── env.example
 │   └── logging.yaml

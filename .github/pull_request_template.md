@@ -16,7 +16,8 @@
 
 ## Checklist
 
-- [ ] No secrets, `.env`, or local-only files (`CLAUDE.md`, API keys)
+- [ ] No secrets, `.env`, or local-only files (`AGENTS.md`, `CLAUDE.md`, API keys)
 - [ ] Commit messages follow `feat|fix|chore|test|docs(...):`
+- [ ] No AI-tool `Co-Authored-By` trailers
 - [ ] Docs updated if behavior or contributor workflow changed
 - [ ] Public docs stay Gemini/Google ADK (no internal provider names)
