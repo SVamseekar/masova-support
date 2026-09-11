@@ -185,8 +185,8 @@ async def _get_top_items(
     store_id: str,
 ) -> List[Dict]:
     res = await client.get(
-        f"{backend_url}/api/analytics/products",
-        params={"storeId": store_id},
+        f"{backend_url}/api/analytics",
+        params={"type": "top-products", "storeId": store_id},
         headers=headers,
     )
     if res.status_code == 200:
