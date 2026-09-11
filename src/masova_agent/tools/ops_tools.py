@@ -211,7 +211,11 @@ async def get_top_items(store_id: str, limit: int = 5) -> dict[str, Any]:
     if err:
         return err
     async with httpx.AsyncClient(timeout=20.0) as client:
-        st, body = await get_json(client, "/api/analytics/products", params={"storeId": store_id})
+        st, body = await get_json(
+            client,
+            "/api/analytics",
+            params={"type": "top-products", "storeId": store_id},
+        )
         if st != 200:
             return {"ok": False, "error": f"analytics_http_{st}", "items": []}
         raw = body or {}
