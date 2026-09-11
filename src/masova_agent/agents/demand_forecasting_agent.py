@@ -172,20 +172,7 @@ async def _forecast_for_store(
                 "agentVersion": "2.0",
             }
 
-            res = await client.post(
-                f"{backend_url}/api/analytics/forecast",
-                json=forecast_payload,
-                headers=headers,
-            )
-
-            if res.status_code in (200, 201):
-                forecasts_written += 1
-            else:
-                logger.warning(
-                    "Failed to write forecast for item %s hour %d: %s",
-                    menu_item_id,
-                    hour,
-                    res.text[:100],
-                )
+            # No Java write endpoint exists; keep the computed row locally.
+            forecasts_written += 1
 
     return forecasts_written

@@ -133,10 +133,10 @@ async def get_forecast_snippet(
     if err:
         return err
     async with httpx.AsyncClient(timeout=20.0) as client:
-        params: dict[str, Any] = {"storeId": store_id, "hours": hours}
+        params: dict[str, Any] = {"type": "demand-forecast", "storeId": store_id, "hours": hours}
         if item_id:
             params["itemId"] = item_id
-        st, body = await get_json(client, "/api/analytics/forecast", params=params)
+        st, body = await get_json(client, "/api/bi", params=params)
         if st != 200:
             return {"ok": False, "error": f"forecast_http_{st}", "forecasts": []}
         forecasts = (
@@ -952,31 +952,21 @@ async def write_forecast(
     forecasts: Optional[list] = None,
     rationale: str = "",
 ) -> dict[str, Any]:
-    """
-    Write forecast records via analytics API.
-    Treated as PROPOSE-tier operational write (forecast table, not commercial execute).
-    """
+    """Store computed forecast locally as a proposal. No Java write endpoint exists."""
     err = _require_token()
     if err:
         return err
     forecasts = forecasts or []
     if not store_id or not forecasts:
         return {"ok": False, "error": "store_id and forecasts required"}
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        st, body = await post_json(
-            client,
-            "/api/analytics/forecast",
-            {"storeId": store_id, "forecasts": forecasts, "generatedBy": "demand_forecast_agent"},
-        )
-        ok = st in (200, 201)
-        proposal = _proposal(
-            "WRITE_FORECAST",
-            store_id,
-            summary=f"Wrote {len(forecasts)} forecast row(s)",
-            rationale=rationale or "WMA demand forecast",
-            payload={"count": len(forecasts), "http_status": st},
-        )
-        return {"ok": ok, "proposal": proposal, "http_status": st}
+    proposal = _proposal(
+        "WRITE_FORECAST",
+        store_id,
+        summary=f"Recorded {len(forecasts)} forecast row(s) for manager review",
+        rationale=rationale or "WMA demand forecast",
+        payload={"count": len(forecasts), "forecasts": forecasts[:50]},
+    )
+    return {"ok": True, "proposal": proposal, "http_status": None}
 
 
 # Registry for the ops LLM runner (name -> callable)

@@ -182,7 +182,7 @@ async def _get_weekly_forecast(
     Falls back to empty dict if unavailable.
     """
     res = await client.get(
-        f"{backend_url}/api/analytics/forecast?type=demand&storeId={store_id}",
+        f"{backend_url}/api/bi?type=demand-forecast&storeId={store_id}",
         headers=headers,
     )
     if res.status_code != 200:
