@@ -42,8 +42,33 @@ def save_proposal(proposal: ActionProposal | dict[str, Any]) -> dict[str, Any]:
     if isinstance(proposal, ActionProposal):
         rec = proposal.to_dict()
     else:
-        rec = ActionProposal.from_dict(proposal).to_dict()
+        raw = dict(proposal)
+        if "type" not in raw and raw.get("proposal_type"):
+            raw["type"] = raw["proposal_type"]
+        raw.setdefault("summary", raw.get("summary") or raw.get("type") or "proposal")
+        raw.setdefault("rationale", raw.get("rationale") or "")
+        rec = ActionProposal.from_dict(raw).to_dict()
     pid = rec["proposal_id"]
+    # Supersede older PENDING proposals of the same agent/store/type.
+    with _lock:
+        pending_matches = [
+            old
+            for old in _by_id.values()
+            if old.get("status") == ProposalStatus.PENDING.value
+            and old.get("agent") == rec.get("agent")
+            and old.get("store_id") == rec.get("store_id")
+            and old.get("type") == rec.get("type")
+            and old.get("proposal_id") != pid
+        ]
+    for old in pending_matches:
+        try:
+            resolve_proposal(
+                old["proposal_id"],
+                ProposalStatus.SUPERSEDED.value,
+                note="superseded by newer proposal",
+            )
+        except Exception as e:
+            logger.warning("supersede failed for %s: %s", old.get("proposal_id"), e)
     with _lock:
         _by_id[pid] = rec
         try:
@@ -98,8 +123,9 @@ def resolve_proposal(
         ProposalStatus.APPROVED.value,
         ProposalStatus.REJECTED.value,
         ProposalStatus.EXPIRED.value,
+        ProposalStatus.SUPERSEDED.value,
     ):
-        raise ValueError("status must be APPROVED, REJECTED, or EXPIRED")
+        raise ValueError("status must be APPROVED, REJECTED, EXPIRED, or SUPERSEDED")
     rec = get_proposal(proposal_id)
     if not rec:
         return None

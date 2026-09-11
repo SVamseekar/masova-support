@@ -23,6 +23,7 @@ class ProposalStatus(str, Enum):
     APPROVED = "APPROVED"
     REJECTED = "REJECTED"
     EXPIRED = "EXPIRED"
+    SUPERSEDED = "SUPERSEDED"
 
 
 @dataclass(frozen=True)

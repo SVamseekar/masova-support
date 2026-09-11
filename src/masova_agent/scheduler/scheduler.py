@@ -93,4 +93,18 @@ def register_jobs():
         replace_existing=True,
     )
 
+    async def _sweep_expired_proposals():
+        from ..runtime.proposal_expiry import sweep_expired
+
+        sweep_expired()
+
+    scheduler.add_job(
+        _sweep_expired_proposals,
+        trigger="interval",
+        hours=1,
+        id="proposal_expiry_sweep",
+        name="Proposal expiry sweeper",
+        replace_existing=True,
+    )
+
     logger.info("Registered %d scheduled agent jobs", len(scheduler.get_jobs()))
