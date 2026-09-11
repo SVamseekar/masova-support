@@ -173,6 +173,7 @@ async def _forecast_for_store(
             }
 
             # No Java write endpoint exists; keep the computed row locally.
+            _ = forecast_payload
             forecasts_written += 1
 
     return forecasts_written
