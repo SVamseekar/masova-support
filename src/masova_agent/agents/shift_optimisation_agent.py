@@ -237,14 +237,20 @@ def _build_draft_shifts(
                 employee = staff_cycle[staff_index % len(staff_cycle)]
                 staff_index += 1
 
-                shift_start = day.replace(hour=slot["startHour"], minute=0, second=0, microsecond=0)
-                shift_end = day.replace(
-                    hour=slot["endHour"] % 24, minute=0, second=0, microsecond=0
-                )
-                if slot["endHour"] == 24:
-                    shift_end = (day + timedelta(days=1)).replace(
-                        hour=0, minute=0, second=0, microsecond=0
-                    )
+                from ..runtime.ops_contract import SHIFT_WINDOWS, is_valid_shift_window
+
+                window_name = slot["name"].lower()
+                start_s = f"{slot['startHour']:02d}:00"
+                end_s = "23:00" if slot["endHour"] >= 24 else f"{slot['endHour']:02d}:00"
+                if not is_valid_shift_window(start_s, end_s, window_name):
+                    bounds = SHIFT_WINDOWS.get(window_name)
+                    if not bounds:
+                        continue
+                    start_s, end_s = bounds[0], bounds[1]
+                sh, sm = (int(x) for x in start_s.split(":"))
+                eh, em = (int(x) for x in end_s.split(":"))
+                shift_start = day.replace(hour=sh, minute=sm, second=0, microsecond=0)
+                shift_end = day.replace(hour=eh, minute=em, second=0, microsecond=0)
 
                 draft_shifts.append(
                     {
