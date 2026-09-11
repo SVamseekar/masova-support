@@ -115,11 +115,11 @@ def get_order_status(order_id: str) -> str:
     customer_str = f" for {customer}" if customer else ""
 
     status_messages = {
-        "PENDING": "has been received and is pending confirmation",
         "RECEIVED": "has been confirmed and will be prepared shortly",
         "PREPARING": "is being prepared by the kitchen",
         "OVEN": "is in the oven",
         "BAKED": "is ready and waiting for dispatch",
+        "READY": "is ready for pickup or dispatch",
         "DISPATCHED": "is out for delivery",
         "OUT_FOR_DELIVERY": "is out for delivery",
         "DELIVERED": "has been delivered",
@@ -358,7 +358,7 @@ def get_store_wait_time(store_id: str) -> str:
 def cancel_order(order_id: str, reason: str) -> str:
     """
     Request cancellation of a customer order if it is still in a cancellable
-    state (PENDING or RECEIVED). This submits a cancellation request for manager
+    state (RECEIVED). This submits a cancellation request for manager
     approval — the agent never cancels an order immediately.
 
     Args:
@@ -374,10 +374,10 @@ def cancel_order(order_id: str, reason: str) -> str:
     order_data = _get(f"/orders/{order_id}")
     if "error" not in order_data:
         current_status = order_data.get("status", "")
-        if current_status and current_status not in {"PENDING", "RECEIVED"}:
+        if current_status and current_status not in {"RECEIVED"}:
             return (
                 f"Sorry, order #{order_id} cannot be cancelled — it is already {current_status}. "
-                f"Orders can only be cancelled when PENDING or RECEIVED. "
+                f"Orders can only be cancelled while still RECEIVED (before preparation starts). "
                 f"I can submit a complaint or refund request instead."
             )
     elif order_data.get("error") == "forbidden":
@@ -412,7 +412,36 @@ def request_refund(order_id: str, reason: str) -> str:
     if len(reason.strip()) < 5:
         return "Please provide a reason for the refund request."
 
-    data = _post("/payments/refund/request", {"orderId": order_id, "reason": reason})
+    # Refund.RefundRequest requires transactionId + amount + type (FULL/PARTIAL),
+    # not just orderId — look up the payment transaction for this order first.
+    payment = _get("/payments", params={"orderId": order_id})
+    if "error" in payment:
+        return _format_error_reply(
+            payment,
+            f"I couldn't find a payment record for order {order_id}, so I can't submit a refund "
+            f"request. Please contact support directly.",
+        )
+
+    transaction_id = payment.get("transactionId")
+    amount = payment.get("amount")
+    if not transaction_id or amount in (None, 0):
+        return (
+            f"I couldn't find a completed payment for order {order_id}, so a refund can't be "
+            f"requested. Please contact support directly."
+        )
+
+    identity = get_current_identity()
+    data = _post(
+        "/payments/refund/request",
+        {
+            "transactionId": transaction_id,
+            "amount": amount,
+            "type": "FULL",
+            "reason": reason,
+            "initiatedBy": identity.user_id,
+            "notes": f"Requested via customer chat for order {order_id}",
+        },
+    )
 
     if "error" in data:
         return _format_error_reply(
