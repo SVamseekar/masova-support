@@ -3,7 +3,7 @@
 # Non-fatal: missing backend or tokens → skip with message, exit 0.
 set -u
 
-BACKEND_URL="${BACKEND_URL:-http://192.168.50.88:8080}"
+BACKEND_URL="${BACKEND_URL:-http://localhost:8080}"
 SUPPORT_URL="${SUPPORT_URL:-http://127.0.0.1:8000}"
 AGENT_TOKEN="${AGENT_TOKEN:-}"
 AGENT_TRIGGER_API_KEY="${AGENT_TRIGGER_API_KEY:-}"

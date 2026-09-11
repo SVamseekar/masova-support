@@ -1,12 +1,12 @@
 # Live smoke checklist
 
-Run against a running support process + optional Dell/staging platform.
+Run against a running support process + optional staging platform.
 
 **Env (never commit secrets)**
 
 | Variable | Purpose |
 |----------|---------|
-| `BACKEND_URL` | Platform gateway (default `http://192.168.50.88:8080`) |
+| `BACKEND_URL` | Platform gateway (default `http://localhost:8080`) |
 | `SUPPORT_URL` | This service (default `http://127.0.0.1:8000`) |
 | `AGENT_TOKEN` | Ops → backend |
 | `AGENT_TRIGGER_API_KEY` | Manual triggers + proposal API |
@@ -62,7 +62,7 @@ Record date, environment, and pass/fail without secrets in `docs/SMOKE_RESULTS.m
 
 | Date | Env | Notes |
 |------|-----|-------|
-| 2026-08-08 | Local + Dell IP defaults | Support process not running during automated script → support probes skipped/fail; backend probe non-200 offline. CI remains green without live deps. Re-run checklist when lab is up. |
+| 2026-08-08 | Local + lab defaults | Support process not running during automated script → support probes skipped/fail; backend probe non-200 offline. CI remains green without live deps. Re-run checklist when lab is up. |
 
 ## Related
 

@@ -7,7 +7,7 @@
 # at test start — no hardcoded IDs or emails.
 #
 # Prerequisites:
-#   - Backend running on 192.168.50.88:8080 (demo seed already done)
+#   - Backend running on $BACKEND_URL (default http://localhost:8080)
 #   - masova-support running on localhost:8000
 #   - GOOGLE_API_KEY set in .env
 #
@@ -17,7 +17,7 @@
 # =============================================================================
 
 AGENT_URL="http://localhost:8000"
-BACKEND_URL="http://192.168.50.88:8080"
+BACKEND_URL="${BACKEND_URL:-http://localhost:8080}"
 SESSION_ID="e2e-test-$(date +%s)"
 PASS=0
 FAIL=0

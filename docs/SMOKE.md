@@ -1,11 +1,11 @@
 # Live smoke (optional)
 
-Non-fatal if backend/Dell is offline. Use for staging or lab (`192.168.50.88`).
+Non-fatal if the platform backend is offline. Set `BACKEND_URL` to the lab or staging gateway.
 
 ## Env
 
 ```bash
-export BACKEND_URL="${BACKEND_URL:-http://192.168.50.88:8080}"
+export BACKEND_URL="${BACKEND_URL:-http://localhost:8080}"
 export AGENT_TOKEN="..."           # ops → platform
 export AGENT_TRIGGER_API_KEY="..." # manual triggers
 export JWT="..."                   # customer JWT for chat (HS512)

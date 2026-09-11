@@ -33,7 +33,7 @@ async def _start_review_consumer():
         import aio_pika
         from .agents.review_response_agent import draft_review_response
 
-        rabbitmq_url = os.getenv("RABBITMQ_URL", "amqp://guest:guest@192.168.50.88:5672/")
+        rabbitmq_url = os.getenv("RABBITMQ_URL", "amqp://guest:guest@localhost:5672/")
         connection = await aio_pika.connect_robust(rabbitmq_url)
         channel = await connection.channel()
         queue = await channel.declare_queue("masova.agent.reviews", durable=True)
