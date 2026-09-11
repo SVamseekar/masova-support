@@ -17,10 +17,18 @@ class AuditLogger:
     fallback flag, latency. Avoids dumping raw PII (tokens, full JWT, etc.).
     """
 
-    SENSITIVE_KEYS = frozenset({
-        "raw_token", "token", "password", "authorization", "api_key",
-        "jwt", "secret", "credit_card",
-    })
+    SENSITIVE_KEYS = frozenset(
+        {
+            "raw_token",
+            "token",
+            "password",
+            "authorization",
+            "api_key",
+            "jwt",
+            "secret",
+            "credit_card",
+        }
+    )
 
     def __init__(self, sink: logging.Logger | None = None):
         self._log = sink or logger

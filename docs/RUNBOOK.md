@@ -35,7 +35,7 @@ curl -s -X POST "$SUPPORT_URL/agent/proposals/{id}/resolve" \
 
 | Symptom | Chat loses multi-turn continuity; new session ids each request or in-memory only |
 | Impact | Single-turn chat still works if ADK runner starts; no shared session across replicas |
-| Action | 1) Check `REDIS_URL` / Dell Redis. 2) Service falls back to `InMemorySessionService`. 3) Restart Redis; no data recovery for ephemeral in-memory. 4) Confirm logs do not print tokens |
+| Action | 1) Check `REDIS_URL`. 2) Service falls back to `InMemorySessionService`. 3) Restart Redis; no data recovery for ephemeral in-memory. 4) Confirm logs do not print tokens |
 
 ## RabbitMQ down (review agent)
 

@@ -1,7 +1,8 @@
 """Ops LLM tool-loop tests (no live LLM / no live backend)."""
+
 import sys
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
@@ -33,6 +34,7 @@ def _reset():
 # Policy / allowlists
 # ---------------------------------------------------------------------------
 
+
 class TestOpsAllowlists:
     def test_no_execute_on_any_ops_allowlist(self):
         pe = PolicyEngine()
@@ -58,6 +60,7 @@ class TestOpsAllowlists:
 # ---------------------------------------------------------------------------
 # COMPUTE tools (pure)
 # ---------------------------------------------------------------------------
+
 
 class TestComputeTools:
     @pytest.mark.asyncio
@@ -105,6 +108,7 @@ class TestComputeTools:
 # Scripted multi-step loops (inventory + pricing golden)
 # ---------------------------------------------------------------------------
 
+
 class TestInventoryToolLoop:
     @pytest.mark.asyncio
     async def test_scripted_inventory_draft_path(self):
@@ -114,21 +118,25 @@ class TestInventoryToolLoop:
             calls.append("list_low_stock")
             return {
                 "ok": True,
-                "items": [{
-                    "id": "inv-1",
-                    "store_id": "s1",
-                    "item_name": "Flour",
-                    "reorder_quantity": 25,
-                    "preferred_supplier_id": "sup-1",
-                    "unit_cost": 2.5,
-                }],
+                "items": [
+                    {
+                        "id": "inv-1",
+                        "store_id": "s1",
+                        "item_name": "Flour",
+                        "reorder_quantity": 25,
+                        "preferred_supplier_id": "sup-1",
+                        "unit_cost": 2.5,
+                    }
+                ],
             }
 
         async def get_forecast_snippet(store_id: str, item_id: str = "", hours: int = 24):
             calls.append("get_forecast_snippet")
             return {"ok": True, "forecasts": [{"item_id": "inv-1", "predicted_qty": 18}]}
 
-        async def create_draft_po(store_id: str, supplier_id: str, items=None, rationale: str = "", notes: str = ""):
+        async def create_draft_po(
+            store_id: str, supplier_id: str, items=None, rationale: str = "", notes: str = ""
+        ):
             calls.append("create_draft_po")
             return {
                 "ok": True,
@@ -211,14 +219,16 @@ class TestInventoryToolLoop:
             tool_functions=tools,
             scripted_plan=plan,
         )
-        result = await runtime.run(AgentRunRequest(
-            agent_name="inventory_reorder",
-            trigger_type="manual",
-            allowed_tools=list(tools.keys()),
-            prefer_llm=True,
-            llm_runner=runner,
-            fallback=lambda: {"status": "should_not_run"},
-        ))
+        result = await runtime.run(
+            AgentRunRequest(
+                agent_name="inventory_reorder",
+                trigger_type="manual",
+                allowed_tools=list(tools.keys()),
+                prefer_llm=True,
+                llm_runner=runner,
+                fallback=lambda: {"status": "should_not_run"},
+            )
+        )
         assert result.used_fallback is False
         assert result.status == "ok"
         assert any(p.type == "DRAFT_PURCHASE_ORDER" for p in result.proposals)
@@ -234,13 +244,15 @@ class TestInventoryToolLoop:
         async def fb():
             return {"status": "ok", "pos_drafted": 1, "summary": "rule drafted 1 PO"}
 
-        result = await AgentRuntime().run(AgentRunRequest(
-            agent_name="inventory_reorder",
-            trigger_type="scheduled",
-            prefer_llm=True,
-            llm_runner=boom,
-            fallback=fb,
-        ))
+        result = await AgentRuntime().run(
+            AgentRunRequest(
+                agent_name="inventory_reorder",
+                trigger_type="scheduled",
+                prefer_llm=True,
+                llm_runner=boom,
+                fallback=fb,
+            )
+        )
         assert result.used_fallback is True
         assert result.status == "ok"
         assert result.proposals
@@ -309,14 +321,16 @@ class TestPricingToolLoop:
             scripted_plan=plan,
         )
         # Bypass pre_gate by using runner directly
-        result = await AgentRuntime().run(AgentRunRequest(
-            agent_name="dynamic_pricing",
-            trigger_type="scheduled",
-            allowed_tools=list(tools.keys()),
-            prefer_llm=True,
-            llm_runner=runner,
-            fallback=lambda: {"status": "fallback"},
-        ))
+        result = await AgentRuntime().run(
+            AgentRunRequest(
+                agent_name="dynamic_pricing",
+                trigger_type="scheduled",
+                allowed_tools=list(tools.keys()),
+                prefer_llm=True,
+                llm_runner=runner,
+                fallback=lambda: {"status": "fallback"},
+            )
+        )
         assert result.used_fallback is False
         assert result.proposals[0].type == "SUGGEST_PRICE_ADJUSTMENT"
         assert result.proposals[0].payload.get("patches_menu") is False
@@ -349,13 +363,15 @@ class TestPricingToolLoop:
                 "summary": "rule pricing",
             }
 
-        result = await AgentRuntime().run(AgentRunRequest(
-            agent_name="dynamic_pricing",
-            trigger_type="scheduled",
-            prefer_llm=True,
-            llm_runner=boom,
-            fallback=fb,
-        ))
+        result = await AgentRuntime().run(
+            AgentRunRequest(
+                agent_name="dynamic_pricing",
+                trigger_type="scheduled",
+                prefer_llm=True,
+                llm_runner=boom,
+                fallback=fb,
+            )
+        )
         assert result.used_fallback is True
         assert result.status == "ok"
 
@@ -412,14 +428,21 @@ class TestOpsPreferLlm:
 
 class TestProposalExtraction:
     def test_extract_nested_proposals(self):
-        props = extract_proposals_from_tool_results([
-            {"tool": "x", "result": {"proposal": {
-                "type": "DRAFT_PURCHASE_ORDER",
-                "store_id": "s",
-                "summary": "s",
-                "rationale": "r",
-            }}},
-        ])
+        props = extract_proposals_from_tool_results(
+            [
+                {
+                    "tool": "x",
+                    "result": {
+                        "proposal": {
+                            "type": "DRAFT_PURCHASE_ORDER",
+                            "store_id": "s",
+                            "summary": "s",
+                            "rationale": "r",
+                        }
+                    },
+                },
+            ]
+        )
         assert len(props) == 1
         assert props[0]["type"] == "DRAFT_PURCHASE_ORDER"
 

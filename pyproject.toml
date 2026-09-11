@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "masova-agent"
-version = "0.1.0"
+version = "0.4.0"
 description = "MaSoVa Customer Support AI Agent built with Google ADK"
 readme = "README.md"
 requires-python = ">=3.9,<3.13"
@@ -64,4 +64,13 @@ python_files = "test_*.py"
 python_classes = "Test*"
 python_functions = "test_*"
 asyncio_mode = "auto"
-ignore = ["tests/test_scenarios.py"]
+
+[tool.mypy]
+python_version = "3.10"
+files = ["src"]
+warn_unused_ignores = true
+show_error_codes = true
+
+[[tool.mypy.overrides]]
+module = ["apscheduler.*"]
+ignore_missing_imports = true

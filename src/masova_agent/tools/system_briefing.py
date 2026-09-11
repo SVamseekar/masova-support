@@ -1,6 +1,7 @@
 """
 System briefing tool for agent
 """
+
 from typing import Optional
 
 from ..services import CustomerService, OrderService, LocationService
@@ -17,7 +18,7 @@ class SystemBriefingTool:
         self,
         customer_service: Optional[CustomerService] = None,
         order_service: Optional[OrderService] = None,
-        location_service: Optional[LocationService] = None
+        location_service: Optional[LocationService] = None,
     ):
         """
         Initialize briefing tool
@@ -76,12 +77,12 @@ class SystemBriefingTool:
             return briefing
 
         except CustomerNotFoundError:
-            error_msg = f"ERROR: Access Denied. User not found in MaSoVa Database."
+            error_msg = "ERROR: Access Denied. User not found in MaSoVa Database."
             logger.warning(f"Briefing failed: {error_msg}")
             return error_msg
         except Exception as e:
             logger.error(f"Unexpected error generating briefing: {e}", exc_info=True)
-            return f"ERROR: System error occurred. Please try again later."
+            return "ERROR: System error occurred. Please try again later."
 
 
 # Global instance for ADK tool registration

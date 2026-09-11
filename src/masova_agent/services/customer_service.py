@@ -1,6 +1,7 @@
 """
 Customer service for business logic
 """
+
 from typing import Optional, List
 
 from ..data import Customer, CustomerRepository

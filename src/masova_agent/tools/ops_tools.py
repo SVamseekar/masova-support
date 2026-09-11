@@ -63,6 +63,7 @@ def _require_token() -> Optional[dict]:
 # READ
 # ---------------------------------------------------------------------------
 
+
 async def list_stores() -> dict[str, Any]:
     """List stores available to the agent."""
     err = _require_token()
@@ -105,16 +106,18 @@ async def list_low_stock(store_id: str = "") -> dict[str, Any]:
             if st != 200:
                 continue
             for item in unwrap_list(body):
-                items.append({
-                    "id": item.get("id"),
-                    "store_id": sid,
-                    "item_name": item.get("itemName") or item.get("name", "Unknown"),
-                    "current_stock": item.get("currentStock") or item.get("quantity"),
-                    "minimum_stock": item.get("minimumStock") or item.get("minStock"),
-                    "reorder_quantity": item.get("reorderQuantity", 10),
-                    "unit_cost": item.get("unitCost", 0),
-                    "preferred_supplier_id": item.get("preferredSupplierId"),
-                })
+                items.append(
+                    {
+                        "id": item.get("id"),
+                        "store_id": sid,
+                        "item_name": item.get("itemName") or item.get("name", "Unknown"),
+                        "current_stock": item.get("currentStock") or item.get("quantity"),
+                        "minimum_stock": item.get("minimumStock") or item.get("minStock"),
+                        "reorder_quantity": item.get("reorderQuantity", 10),
+                        "unit_cost": item.get("unitCost", 0),
+                        "preferred_supplier_id": item.get("preferredSupplierId"),
+                    }
+                )
         return {"ok": True, "items": items, "count": len(items)}
 
 
@@ -134,20 +137,22 @@ async def get_forecast_snippet(
         st, body = await get_json(client, "/api/analytics/forecast", params=params)
         if st != 200:
             return {"ok": False, "error": f"forecast_http_{st}", "forecasts": []}
-        forecasts = body if isinstance(body, list) else (
-            body.get("forecasts") or body.get("content") or []
+        forecasts = (
+            body if isinstance(body, list) else (body.get("forecasts") or body.get("content") or [])
         )
         # Compact for LLM context
         snippet = []
         for f in (forecasts or [])[:50]:
             if not isinstance(f, dict):
                 continue
-            snippet.append({
-                "item_id": f.get("itemId") or f.get("menuItemId"),
-                "predicted_qty": f.get("predictedQty") or f.get("quantity") or f.get("demand"),
-                "hour": f.get("hour"),
-                "day": f.get("day") or f.get("date"),
-            })
+            snippet.append(
+                {
+                    "item_id": f.get("itemId") or f.get("menuItemId"),
+                    "predicted_qty": f.get("predictedQty") or f.get("quantity") or f.get("demand"),
+                    "hour": f.get("hour"),
+                    "day": f.get("day") or f.get("date"),
+                }
+            )
         return {"ok": True, "store_id": store_id, "forecasts": snippet}
 
 
@@ -165,8 +170,10 @@ async def count_active_orders(store_id: str) -> dict[str, Any]:
         )
         if st != 200:
             return {"ok": False, "error": f"orders_http_{st}", "count": 0}
-        items = unwrap_list(body) if not isinstance(body, dict) else (
-            body.get("content") or (body if isinstance(body, list) else [])
+        items = (
+            unwrap_list(body)
+            if not isinstance(body, dict)
+            else (body.get("content") or (body if isinstance(body, list) else []))
         )
         if isinstance(body, dict) and "totalElements" in body:
             total = body["totalElements"]
@@ -202,24 +209,22 @@ async def get_top_items(store_id: str, limit: int = 5) -> dict[str, Any]:
     if err:
         return err
     async with httpx.AsyncClient(timeout=20.0) as client:
-        st, body = await get_json(
-            client, "/api/analytics/products", params={"storeId": store_id}
-        )
+        st, body = await get_json(client, "/api/analytics/products", params={"storeId": store_id})
         if st != 200:
             return {"ok": False, "error": f"analytics_http_{st}", "items": []}
         raw = body or {}
-        items = raw.get("topItems") or raw.get("items") or (
-            raw if isinstance(raw, list) else []
-        )
+        items = raw.get("topItems") or raw.get("items") or (raw if isinstance(raw, list) else [])
         out = []
         for i in (items or [])[: max(1, min(limit, 20))]:
             if isinstance(i, dict):
-                out.append({
-                    "id": i.get("id"),
-                    "name": i.get("name", "?"),
-                    "price": i.get("price"),
-                    "volume": i.get("volume") or i.get("orderCount"),
-                })
+                out.append(
+                    {
+                        "id": i.get("id"),
+                        "name": i.get("name", "?"),
+                        "price": i.get("price"),
+                        "volume": i.get("volume") or i.get("orderCount"),
+                    }
+                )
         return {"ok": True, "store_id": store_id, "items": out}
 
 
@@ -240,11 +245,13 @@ async def get_slow_items(store_id: str, limit: int = 5) -> dict[str, Any]:
         slow = [i for i in all_items if i.get("id") not in top_ids]
         out = []
         for i in slow[: max(1, min(limit, 20))]:
-            out.append({
-                "id": i.get("id"),
-                "name": i.get("name", "?"),
-                "price": i.get("price"),
-            })
+            out.append(
+                {
+                    "id": i.get("id"),
+                    "name": i.get("name", "?"),
+                    "price": i.get("price"),
+                }
+            )
         return {"ok": True, "store_id": store_id, "items": out}
 
 
@@ -267,7 +274,8 @@ async def get_order_context(order_id: str) -> dict[str, Any]:
             "store_id": order.get("storeId"),
             "items": [
                 {"name": i.get("name", "?"), "qty": i.get("quantity", 1)}
-                for i in items if isinstance(i, dict)
+                for i in items
+                if isinstance(i, dict)
             ],
             "status": order.get("status"),
         }
@@ -324,12 +332,14 @@ async def read_churn_segment(store_id: str) -> dict[str, Any]:
                 continue
             last = max(last_dates)
             if last < churn_cutoff:
-                churned.append({
-                    "id": cid,
-                    "name": c.get("name") or c.get("firstName", "customer"),
-                    "last_order_at": last,
-                    "order_count_60d": len(orders),
-                })
+                churned.append(
+                    {
+                        "id": cid,
+                        "name": c.get("name") or c.get("firstName", "customer"),
+                        "last_order_at": last,
+                        "order_count_60d": len(orders),
+                    }
+                )
         return {
             "ok": True,
             "store_id": store_id,
@@ -350,20 +360,20 @@ async def read_staff_slots(store_id: str) -> dict[str, Any]:
         return err
     roles = {"KITCHEN_STAFF", "CASHIER", "DRIVER"}
     async with httpx.AsyncClient(timeout=20.0) as client:
-        st, body = await get_json(
-            client, "/api/users", params={"storeId": store_id}
-        )
+        st, body = await get_json(client, "/api/users", params={"storeId": store_id})
         if st != 200:
             return {"ok": False, "error": f"users_http_{st}", "staff": []}
         staff = []
         for u in unwrap_list(body):
             role = (u.get("role") or u.get("type") or "").upper()
             if role in roles or u.get("type") in roles:
-                staff.append({
-                    "id": u.get("id"),
-                    "name": u.get("name") or u.get("fullName", "?"),
-                    "role": role or u.get("type"),
-                })
+                staff.append(
+                    {
+                        "id": u.get("id"),
+                        "name": u.get("name") or u.get("fullName", "?"),
+                        "role": role or u.get("type"),
+                    }
+                )
         return {"ok": True, "store_id": store_id, "staff": staff}
 
 
@@ -414,6 +424,7 @@ async def read_order_metrics(store_id: str = "") -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 # COMPUTE
 # ---------------------------------------------------------------------------
+
 
 async def compute_pricing_signal(
     store_id: str,
@@ -497,6 +508,7 @@ async def compute_wma_forecast(
 # PROPOSE (draft + notify only — never final execute)
 # ---------------------------------------------------------------------------
 
+
 async def create_draft_po(
     store_id: str,
     supplier_id: str,
@@ -514,9 +526,7 @@ async def create_draft_po(
 
     from ..runtime.idempotency import check_or_claim, make_key
 
-    idem_key = make_key(
-        "inventory_reorder", store_id, "draft_po", window="hour", extra=supplier_id
-    )
+    idem_key = make_key("inventory_reorder", store_id, "draft_po", window="hour", extra=supplier_id)
     is_new, prior = check_or_claim(idem_key, {"supplier_id": supplier_id})
     if not is_new:
         return {
@@ -533,12 +543,16 @@ async def create_draft_po(
     for it in items:
         if not isinstance(it, dict):
             continue
-        po_items.append({
-            "inventoryItemId": it.get("inventory_item_id") or it.get("id") or it.get("inventoryItemId"),
-            "itemName": it.get("item_name") or it.get("itemName") or it.get("name", "Unknown"),
-            "quantity": it.get("quantity") or it.get("reorder_quantity") or 10,
-            "unitCost": it.get("unit_cost") or it.get("unitCost") or 0,
-        })
+        po_items.append(
+            {
+                "inventoryItemId": it.get("inventory_item_id")
+                or it.get("id")
+                or it.get("inventoryItemId"),
+                "itemName": it.get("item_name") or it.get("itemName") or it.get("name", "Unknown"),
+                "quantity": it.get("quantity") or it.get("reorder_quantity") or 10,
+                "unitCost": it.get("unit_cost") or it.get("unitCost") or 0,
+            }
+        )
     if not po_items:
         return {"ok": False, "error": "no valid items"}
 
@@ -670,9 +684,7 @@ async def propose_price_suggestion(
 
     from ..runtime.idempotency import check_or_claim, make_key
 
-    idem_key = make_key(
-        "dynamic_pricing", store_id, f"price_{direction}", window="hour"
-    )
+    idem_key = make_key("dynamic_pricing", store_id, f"price_{direction}", window="hour")
     is_new, prior = check_or_claim(idem_key, {"direction": direction, "percent": pct})
     if not is_new:
         return {
@@ -687,18 +699,24 @@ async def propose_price_suggestion(
 
     names = item_names or []
     ids = item_ids or []
-    names_str = ", ".join(str(n) for n in names[:8]) or ", ".join(str(i) for i in ids[:8]) or "selected items"
+    names_str = (
+        ", ".join(str(n) for n in names[:8])
+        or ", ".join(str(i) for i in ids[:8])
+        or "selected items"
+    )
     if direction == "increase":
         message = (
-            f"Kitchen overload signal — suggest temporary {pct:.0f}% price increase on: {names_str}. "
-            f"Active orders: {active_count}. Manager approval required; agent does not change prices."
+            f"Kitchen overload signal — suggest temporary {pct:.0f}% price "
+            f"increase on: {names_str}. Active orders: {active_count}. "
+            "Manager approval required; agent does not change prices."
         )
         priority = "HIGH"
         title = "Price Increase Suggestion"
     else:
         message = (
             f"Slow period signal — suggest temporary {pct:.0f}% discount on: {names_str}. "
-            f"Recent 30m orders: {recent_count}. Manager approval required; agent does not change prices."
+            f"Recent 30m orders: {recent_count}. "
+            "Manager approval required; agent does not change prices."
         )
         priority = "MEDIUM"
         title = "Price Discount Suggestion"
@@ -986,7 +1004,10 @@ OPS_TOOL_FUNCTIONS: dict[str, Any] = {
 
 # JSON-schema-ish parameter hints for LLM function declarations
 OPS_TOOL_SCHEMAS: dict[str, dict[str, Any]] = {
-    "list_stores": {"description": "List restaurant stores", "parameters": {"type": "object", "properties": {}}},
+    "list_stores": {
+        "description": "List restaurant stores",
+        "parameters": {"type": "object", "properties": {}},
+    },
     "list_low_stock": {
         "description": "List low-stock inventory items. Pass store_id or empty for all stores.",
         "parameters": {
@@ -1111,7 +1132,9 @@ OPS_TOOL_SCHEMAS: dict[str, dict[str, Any]] = {
         },
     },
     "create_draft_po": {
-        "description": "Create a DRAFT purchase order (manager approval required). Never finalizes PO.",
+        "description": (
+            "Create a DRAFT purchase order (manager approval required). " "Never finalizes PO."
+        ),
         "parameters": {
             "type": "object",
             "properties": {

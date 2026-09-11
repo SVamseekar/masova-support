@@ -87,6 +87,7 @@ def _format_error_reply(data: dict, fallback: str) -> str:
 # Tool functions
 # ---------------------------------------------------------------------------
 
+
 def get_order_status(order_id: str) -> str:
     """
     Retrieve the current status of a customer order.
@@ -107,9 +108,7 @@ def get_order_status(order_id: str) -> str:
     status = data.get("status", "UNKNOWN")
     order_num = data.get("orderNumber", order_id)
     items = data.get("items", [])
-    item_list = ", ".join(
-        f"{i.get('quantity', 1)}x {i.get('name', '?')}" for i in items
-    )
+    item_list = ", ".join(f"{i.get('quantity', 1)}x {i.get('name', '?')}" for i in items)
     eta = data.get("preparationTime", "")
     eta_str = f" (ETA: ~{eta} min)" if eta else ""
     customer = data.get("customerName", "")
@@ -162,7 +161,8 @@ def get_menu_items(store_id: str, category: str = "") -> str:
     if category:
         cat_upper = category.upper()
         filtered = [
-            i for i in items
+            i
+            for i in items
             if cat_upper in (i.get("cuisine", "") or "").upper()
             or cat_upper in (i.get("category", "") or "").upper()
             or cat_upper in (i.get("name", "") or "").upper()
@@ -243,12 +243,15 @@ def submit_complaint(order_id: str, description: str) -> str:
         return "Please provide more detail about the issue so we can help you effectively."
 
     identity = get_current_identity()
-    data = _post("/reviews/complaints", {
-        "customerId": identity.user_id,
-        "orderId": order_id,
-        "description": description,
-        "type": "COMPLAINT",
-    })
+    data = _post(
+        "/reviews/complaints",
+        {
+            "customerId": identity.user_id,
+            "orderId": order_id,
+            "description": description,
+            "type": "COMPLAINT",
+        },
+    )
 
     if "error" in data:
         return _format_error_reply(
@@ -298,7 +301,11 @@ def get_loyalty_points() -> str:
     next_tier = next_tier_map.get(tier)
     if next_tier:
         needed = max(0, thresholds.get(next_tier, 0) - points)
-        next_info = f" {needed} more points to reach {next_tier}." if needed > 0 else f" You're ready for {next_tier}!"
+        next_info = (
+            f" {needed} more points to reach {next_tier}."
+            if needed > 0
+            else f" You're ready for {next_tier}!"
+        )
     else:
         next_info = " You're at the highest tier — PLATINUM!"
 
@@ -317,11 +324,14 @@ def get_store_wait_time(store_id: str) -> str:
     Returns:
         A string describing the estimated wait time for new orders.
     """
-    data = _get("/orders", params={
-        "storeId": store_id,
-        "status": "RECEIVED,PREPARING,OVEN",
-        "size": 1,
-    })
+    data = _get(
+        "/orders",
+        params={
+            "storeId": store_id,
+            "status": "RECEIVED,PREPARING,OVEN",
+            "size": 1,
+        },
+    )
     if "error" in data:
         return _format_error_reply(
             data,
@@ -335,9 +345,14 @@ def get_store_wait_time(store_id: str) -> str:
     elif active <= 5:
         return f"The kitchen has {active} order(s) in progress. Estimated wait: 15–20 minutes."
     elif active <= 10:
-        return f"The kitchen is moderately busy with {active} orders. Estimated wait: 25–35 minutes."
+        return (
+            f"The kitchen is moderately busy with {active} orders. Estimated wait: 25–35 minutes."
+        )
     else:
-        return f"The kitchen is very busy right now ({active} active orders). Estimated wait: 40–50 minutes."
+        return (
+            f"The kitchen is very busy right now ({active} active orders). "
+            "Estimated wait: 40–50 minutes."
+        )
 
 
 def cancel_order(order_id: str, reason: str) -> str:

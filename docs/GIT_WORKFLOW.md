@@ -49,13 +49,14 @@ Use conventional prefixes (scope optional):
 - `test(...):` — tests
 - `docs(...):` — documentation
 
-Do **not** add `Co-Authored-By` trailers or AI-tool traces in commits.
+Do **not** add `Co-Authored-By` trailers for AI coding tools (Claude, Cursor, Codex, Grok, Copilot, etc.). Dependabot merge trailers on GitHub are expected. Never rewrite published `main` history. If a personal feature branch must be rewritten, use `--force-with-lease`, never `--force`.
 
 ## Never commit
 
 - `.env` / real secrets / API keys
-- `CLAUDE.md` (local-only; gitignored)
-- `.claude/`, `.cursor/`, and other AI-editor workspaces
+- `AGENTS.md` / `CLAUDE.md` (local-only; gitignored)
+- `.claude/`, `.cursor/`, `.codex/`, `.grok/`, and other AI-editor workspaces
+- `docs/audit/` and other agent scratch directories
 - Virtualenvs (`.venv/`), caches, coverage artifacts
 
 Public docs and README describe **Gemini / Google ADK**. Do not put internal provider names in tracked docs or commit messages intended for public history.
@@ -63,8 +64,10 @@ Public docs and README describe **Gemini / Google ADK**. Do not put internal pro
 ## CI
 
 - Workflow: `.github/workflows/ci.yml`
-- Required check name: **`test`**
-- Runs unit tests with dummy env (no live LLM or platform backend)
+- Required check name: **`test`** (must stay this name — branch protection uses it)
+- On pull requests and pushes to `main`: install from `requirements.txt`, repository hygiene, Black `--check`, flake8, mypy, wheel build, package import, unit tests (dummy env, no live LLM/backend), `pip-audit` (starlette 1.x CVEs ignored until ADK allows that upgrade — see `SECURITY.md`)
+- Official Actions pinned to commit SHAs
+- `permissions: contents: read`
 - Concurrency cancels outdated runs on the same ref
 
 ## Dependabot
@@ -99,17 +102,12 @@ Config: [`.github/dependabot.yml`](../.github/dependabot.yml)
 
 - `archive/wip-agent-local-2026-07-09` — parked local agent/legacy snapshot from July 2026 (not on main). Inspect with `git show archive/wip-agent-local-2026-07-09`.
 
-## Releases (optional)
+## Releases
 
-When shipping a version, tag:
-
-```text
-vMAJOR.MINOR.PATCH
-```
-
-Example: `v0.1.0`. Prefer annotated tags and a short changelog entry in `CHANGELOG` / release notes. Do not retag or force-move tags that others may have pulled.
+See **[RELEASING.md](./RELEASING.md)**. Short version: SemVer tags `vMAJOR.MINOR.PATCH` from green `main`, changelog entry, annotated tag, GitHub Release from that tag. Never move or delete a published tag.
 
 ## Related docs
 
 - [CONTRIBUTING.md](./CONTRIBUTING.md) — setup and coding standards
+- [RELEASING.md](./RELEASING.md) — SemVer and GitHub Releases
 - [RUNBOOK.md](./RUNBOOK.md) — operations

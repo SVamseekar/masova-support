@@ -14,13 +14,18 @@ from contextlib import asynccontextmanager
 from typing import Optional
 
 from dotenv import load_dotenv
-import fastapi
 from fastapi import Depends, FastAPI, HTTPException, Body
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from .agent import send_message_async, _session_service
-from .auth import AgentIdentity, bind_identity, reset_identity, verify_customer_jwt, verify_trigger_api_key
+from .auth import (
+    AgentIdentity,
+    bind_identity,
+    reset_identity,
+    verify_customer_jwt,
+    verify_trigger_api_key,
+)
 from .scheduler.scheduler import scheduler, register_jobs
 
 load_dotenv()
@@ -33,11 +38,13 @@ async def _start_review_consumer():
         import aio_pika
         from .agents.review_response_agent import draft_review_response
 
-        rabbitmq_url = os.getenv("RABBITMQ_URL", "amqp://guest:guest@192.168.50.88:5672/")
+        rabbitmq_url = os.getenv("RABBITMQ_URL", "amqp://guest:guest@localhost:5672/")
         connection = await aio_pika.connect_robust(rabbitmq_url)
         channel = await connection.channel()
         queue = await channel.declare_queue("masova.agent.reviews", durable=True)
-        exchange = await channel.declare_exchange("masova.reviews.exchange", aio_pika.ExchangeType.TOPIC, durable=True)
+        exchange = await channel.declare_exchange(
+            "masova.reviews.exchange", aio_pika.ExchangeType.TOPIC, durable=True
+        )
         await queue.bind(exchange, "review.created")
 
         logger.info("RabbitMQ review consumer started")
@@ -55,6 +62,7 @@ async def _start_review_consumer():
 async def lifespan(app_instance: FastAPI):
     # Reload config to pick up any .env changes made after module import
     from .utils.config import reload_config
+
     reload_config()
 
     # Start scheduler
@@ -98,6 +106,7 @@ app.add_middleware(
 # Chat endpoint (Agent 1)
 # ---------------------------------------------------------------------------
 
+
 class ChatRequest(BaseModel):
     message: str
     sessionId: Optional[str] = None
@@ -115,7 +124,7 @@ def health():
 
 @app.post("/agent/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest, identity: AgentIdentity = Depends(verify_customer_jwt)):
-    """Send a message to the MaSoVa support agent, authenticated as the caller's verified identity."""
+    """Send a message to the support agent as the caller's verified identity."""
     if not request.message or not request.message.strip():
         raise HTTPException(status_code=400, detail="message must not be empty")
 
@@ -152,51 +161,60 @@ async def chat(request: ChatRequest, identity: AgentIdentity = Depends(verify_cu
 # customer identity to bind these to.
 # ---------------------------------------------------------------------------
 
+
 @app.post("/agents/demand-forecast/trigger", dependencies=[Depends(verify_trigger_api_key)])
 async def trigger_demand_forecast():
     from .agents.demand_forecasting_agent import run_demand_forecast
+
     return await run_demand_forecast()
 
 
 @app.post("/agents/inventory-reorder/trigger", dependencies=[Depends(verify_trigger_api_key)])
 async def trigger_inventory_reorder():
     from .agents.inventory_reorder_agent import run_inventory_reorder
+
     return await run_inventory_reorder()
 
 
 @app.post("/agents/churn-prevention/trigger", dependencies=[Depends(verify_trigger_api_key)])
 async def trigger_churn_prevention():
     from .agents.churn_prevention_agent import run_churn_prevention
+
     return await run_churn_prevention()
 
 
 @app.post("/agents/review-response/trigger", dependencies=[Depends(verify_trigger_api_key)])
 async def trigger_review_response(review_data: dict = Body(...)):
     from .agents.review_response_agent import draft_review_response
+
     return await draft_review_response(review_data)
 
 
 @app.post("/agents/shift-optimisation/trigger", dependencies=[Depends(verify_trigger_api_key)])
 async def trigger_shift_opt():
     from .agents.shift_optimisation_agent import run_shift_optimisation
+
     return await run_shift_optimisation()
 
 
 @app.post("/agents/kitchen-coach/trigger", dependencies=[Depends(verify_trigger_api_key)])
 async def trigger_kitchen_coach():
     from .agents.kitchen_coach_agent import run_kitchen_coach
+
     return await run_kitchen_coach()
 
 
 @app.post("/agents/dynamic-pricing/trigger", dependencies=[Depends(verify_trigger_api_key)])
 async def trigger_dynamic_pricing():
     from .agents.dynamic_pricing_agent import run_dynamic_pricing
+
     return await run_dynamic_pricing()
 
 
 # ---------------------------------------------------------------------------
 # ActionProposal list / resolve (manager outcome recording — not final execute)
 # ---------------------------------------------------------------------------
+
 
 class ResolveProposalBody(BaseModel):
     status: str  # APPROVED | REJECTED
@@ -233,9 +251,7 @@ async def resolve_action_proposal(proposal_id: str, body: ResolveProposalBody):
     from .runtime import proposal_store
 
     try:
-        rec = proposal_store.resolve_proposal(
-            proposal_id, body.status, note=body.note or ""
-        )
+        rec = proposal_store.resolve_proposal(proposal_id, body.status, note=body.note or "")
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     if not rec:

@@ -65,9 +65,7 @@ class ActionProposal:
     def to_dict(self) -> dict[str, Any]:
         d = asdict(self)
         d["risk"] = self.risk.value if isinstance(self.risk, RiskTier) else self.risk
-        d["status"] = (
-            self.status.value if isinstance(self.status, ProposalStatus) else self.status
-        )
+        d["status"] = self.status.value if isinstance(self.status, ProposalStatus) else self.status
         return d
 
     @classmethod

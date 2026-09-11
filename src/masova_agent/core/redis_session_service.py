@@ -3,10 +3,11 @@ Redis-backed session service for MaSoVa Agent.
 Replaces InMemorySessionService to persist conversation across restarts.
 Falls back to InMemorySessionService if Redis is unavailable.
 """
+
 import json
 import uuid
 import logging
-from typing import Optional
+from typing import Optional, cast
 from dataclasses import dataclass, field
 
 import redis
@@ -39,7 +40,9 @@ class RedisSessionService:
         self._use_redis = False
 
         try:
-            client = redis.Redis.from_url(redis_url, decode_responses=True, socket_connect_timeout=2)
+            client = redis.Redis.from_url(
+                redis_url, decode_responses=True, socket_connect_timeout=2
+            )
             client.ping()
             self._redis = client
             self._use_redis = True
@@ -50,53 +53,70 @@ class RedisSessionService:
     def _session_key(self, session_id: str) -> str:
         return f"masova:session:{session_id}"
 
-    async def create_session(self, app_name: str, user_id: str, session_id: Optional[str] = None, **kwargs) -> SessionData:
+    async def create_session(
+        self, app_name: str, user_id: str, session_id: Optional[str] = None, **kwargs
+    ) -> SessionData:
         sid = session_id or str(uuid.uuid4())
         session = SessionData(id=sid, app_name=app_name, user_id=user_id)
 
-        if self._use_redis:
+        client = self._redis
+        if self._use_redis and client is not None:
             try:
-                data = json.dumps({"id": sid, "app_name": app_name, "user_id": user_id, "history": []})
-                self._redis.setex(self._session_key(sid), SESSION_TTL_SECONDS, data)
+                data = json.dumps(
+                    {"id": sid, "app_name": app_name, "user_id": user_id, "history": []}
+                )
+                client.setex(self._session_key(sid), SESSION_TTL_SECONDS, data)
                 logger.debug("Created Redis session: %s for user: %s", sid, user_id)
                 return session
             except Exception as e:
                 logger.warning("Redis write failed (%s) — falling back", e)
 
-        # Fallback
-        return await self._fallback.create_session(app_name=app_name, user_id=user_id)
+        # Fallback returns an ADK Session, not SessionData.
+        return cast(
+            SessionData, await self._fallback.create_session(app_name=app_name, user_id=user_id)
+        )
 
-    async def get_session(self, app_name: str, user_id: str, session_id: str, **kwargs) -> Optional[SessionData]:
-        if self._use_redis:
+    async def get_session(
+        self, app_name: str, user_id: str, session_id: str, **kwargs
+    ) -> Optional[SessionData]:
+        client = self._redis
+        if self._use_redis and client is not None:
             try:
-                raw = self._redis.get(self._session_key(session_id))
+                raw = client.get(self._session_key(session_id))
                 if raw:
-                    data = json.loads(raw)
+                    data = json.loads(cast(str, raw))
                     return SessionData(
                         id=data["id"],
                         app_name=data["app_name"],
                         user_id=data["user_id"],
-                        history=data.get("history", [])
+                        history=data.get("history", []),
                     )
             except Exception as e:
                 logger.warning("Redis read failed (%s) — falling back", e)
 
-        return await self._fallback.get_session(app_name=app_name, user_id=user_id, session_id=session_id)
+        return cast(
+            Optional[SessionData],
+            await self._fallback.get_session(
+                app_name=app_name, user_id=user_id, session_id=session_id
+            ),
+        )
 
     async def append_turn(self, session_id: str, role: str, text: str) -> None:
         """Append a conversation turn and trim to MAX_HISTORY_TURNS."""
         if not self._use_redis:
             return  # InMemory fallback handles history internally via ADK
 
+        client = self._redis
+        if client is None:
+            return
         try:
-            raw = self._redis.get(self._session_key(session_id))
+            raw = client.get(self._session_key(session_id))
             if not raw:
                 return
-            data = json.loads(raw)
+            data = json.loads(cast(str, raw))
             history = data.get("history", [])
             history.append({"role": role, "text": text})
-            # Keep only last MAX_HISTORY_TURNS entries
             data["history"] = history[-MAX_HISTORY_TURNS:]
-            self._redis.setex(self._session_key(session_id), SESSION_TTL_SECONDS, json.dumps(data))
+            client.setex(self._session_key(session_id), SESSION_TTL_SECONDS, json.dumps(data))
         except Exception as e:
             logger.warning("Redis history append failed (%s)", e)

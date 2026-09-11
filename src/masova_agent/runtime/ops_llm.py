@@ -14,7 +14,7 @@ import inspect
 import json
 import logging
 import os
-from typing import Any, Awaitable, Callable, Optional
+from typing import Any, Awaitable, Callable, Optional, cast
 
 from .models import AgentRunRequest
 from .policy import PolicyEngine
@@ -77,10 +77,7 @@ async def invoke_tool(fn: ToolFn, args: dict[str, Any]) -> dict[str, Any]:
     """Call tool with only parameters it accepts."""
     try:
         sig = inspect.signature(fn)
-        accepted = {
-            k: v for k, v in (args or {}).items()
-            if k in sig.parameters
-        }
+        accepted = {k: v for k, v in (args or {}).items() if k in sig.parameters}
         # Fill missing required-ish with defaults when possible
         result = fn(**accepted)
         if inspect.isawaitable(result):
@@ -134,17 +131,21 @@ async def run_scripted_tool_loop(
         if not name:
             continue
         if name not in allowed or not policy.is_allowed(name, allowed):
-            tool_results.append({
-                "tool": name,
-                "result": {"ok": False, "error": "tool_not_allowed"},
-            })
+            tool_results.append(
+                {
+                    "tool": name,
+                    "result": {"ok": False, "error": "tool_not_allowed"},
+                }
+            )
             continue
         fn = tools.get(name)
         if fn is None:
-            tool_results.append({
-                "tool": name,
-                "result": {"ok": False, "error": "unknown_tool"},
-            })
+            tool_results.append(
+                {
+                    "tool": name,
+                    "result": {"ok": False, "error": "unknown_tool"},
+                }
+            )
             continue
         result = await invoke_tool(fn, args if isinstance(args, dict) else {})
         tools_used.append(name)
@@ -194,7 +195,9 @@ async def run_genai_tool_loop(
         raise RuntimeError("LLM_API_KEY_not_configured")
 
     policy = policy or PolicyEngine()
-    allowed = [t for t in (request.allowed_tools or []) if policy.is_allowed(t, request.allowed_tools)]
+    allowed = [
+        t for t in (request.allowed_tools or []) if policy.is_allowed(t, request.allowed_tools)
+    ]
     if not allowed:
         raise RuntimeError("no_allowed_tools")
 
@@ -212,7 +215,7 @@ async def run_genai_tool_loop(
             genai_types.FunctionDeclaration(
                 name=name,
                 description=schema.get("description") or name,
-                parameters=params,
+                parameters=cast(Any, params),
             )
         )
 
@@ -318,9 +321,7 @@ async def run_genai_tool_loop(
                 )
             )
 
-        contents.append(
-            genai_types.Content(role="user", parts=response_parts)
-        )
+        contents.append(genai_types.Content(role="user", parts=response_parts))
 
     proposals = extract_proposals_from_tool_results(tool_results)
     summary = final_text or (
@@ -383,15 +384,9 @@ def make_ops_llm_runner(
     from ..tools.ops_tools import OPS_TOOL_FUNCTIONS, OPS_TOOL_SCHEMAS
 
     tools = tool_functions or {
-        n: OPS_TOOL_FUNCTIONS[n]
-        for n in tool_names
-        if n in OPS_TOOL_FUNCTIONS
+        n: OPS_TOOL_FUNCTIONS[n] for n in tool_names if n in OPS_TOOL_FUNCTIONS
     }
-    schemas = tool_schemas or {
-        n: OPS_TOOL_SCHEMAS[n]
-        for n in tool_names
-        if n in OPS_TOOL_SCHEMAS
-    }
+    schemas = tool_schemas or {n: OPS_TOOL_SCHEMAS[n] for n in tool_names if n in OPS_TOOL_SCHEMAS}
 
     async def _runner(request: AgentRunRequest) -> dict[str, Any]:
         # Ensure allowlist includes declared tools

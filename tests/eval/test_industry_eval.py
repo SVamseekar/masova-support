@@ -12,6 +12,7 @@ Scenarios (must pass):
 8. Idempotency: second run same key does not double-create
 9. Policy: EXECUTE tools rejected
 """
+
 from __future__ import annotations
 
 import sys
@@ -22,7 +23,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 
 import pytest
 
-from masova_agent.runtime.agent_runtime import get_runtime, reset_runtime_for_tests
+from masova_agent.runtime.agent_runtime import reset_runtime_for_tests
 from masova_agent.runtime.idempotency import clear_for_tests
 from masova_agent.runtime.models import AgentRunRequest
 from masova_agent.runtime.ops_llm import run_scripted_tool_loop
@@ -45,21 +46,24 @@ def _clean():
 # 1. Low stock → draft PO
 # ---------------------------------------------------------------------------
 
+
 class TestEvalLowStockDraftPO:
     @pytest.mark.asyncio
     async def test_scripted_inventory_drafts_po_from_tool_items(self):
         async def list_low_stock(store_id: str = ""):
             return {
                 "ok": True,
-                "items": [{
-                    "id": "inv-1",
-                    "store_id": "DOM001",
-                    "item_name": "Flour",
-                    "current_stock": 2,
-                    "reorder_quantity": 20,
-                    "preferred_supplier_id": "sup-1",
-                    "unit_cost": 5,
-                }],
+                "items": [
+                    {
+                        "id": "inv-1",
+                        "store_id": "DOM001",
+                        "item_name": "Flour",
+                        "current_stock": 2,
+                        "reorder_quantity": 20,
+                        "preferred_supplier_id": "sup-1",
+                        "unit_cost": 5,
+                    }
+                ],
                 "count": 1,
             }
 
@@ -92,17 +96,24 @@ class TestEvalLowStockDraftPO:
                 "args": {
                     "store_id": "DOM001",
                     "supplier_id": "sup-1",
-                    "items": [{
-                        "id": "inv-1",
-                        "reorder_quantity": 20,
-                        "item_name": "Flour",
-                    }],
+                    "items": [
+                        {
+                            "id": "inv-1",
+                            "reorder_quantity": 20,
+                            "item_name": "Flour",
+                        }
+                    ],
                     "rationale": "Below reorder from list_low_stock",
                 },
             },
-            {"tool": "notify_managers", "args": {
-                "store_id": "DOM001", "message": "PO draft ready", "title": "Inventory",
-            }},
+            {
+                "tool": "notify_managers",
+                "args": {
+                    "store_id": "DOM001",
+                    "message": "PO draft ready",
+                    "title": "Inventory",
+                },
+            },
         ]
         req = AgentRunRequest(
             agent_name="inventory_reorder",
@@ -120,6 +131,7 @@ class TestEvalLowStockDraftPO:
 # 2–3. Pricing overload suggest / underload near close skip
 # ---------------------------------------------------------------------------
 
+
 class TestEvalPricing:
     @pytest.mark.asyncio
     async def test_overload_suggest_no_menu_patch(self):
@@ -129,8 +141,9 @@ class TestEvalPricing:
             posts.append(kw)
             return {"ok": True, "sent": 1}
 
-        with patch.object(ops_tools, "_require_token", return_value=None), patch.object(
-            ops_tools, "notify_managers", side_effect=notify_managers
+        with (
+            patch.object(ops_tools, "_require_token", return_value=None),
+            patch.object(ops_tools, "notify_managers", side_effect=notify_managers),
         ):
             r = await ops_tools.propose_price_suggestion(
                 store_id="DOM001",
@@ -180,16 +193,19 @@ class TestEvalPricing:
 # 4. 1★ review draft notify
 # ---------------------------------------------------------------------------
 
+
 class TestEvalReview:
     @pytest.mark.asyncio
     async def test_one_star_drafts_response(self):
         from masova_agent.agents.review_response_agent import draft_review_response
 
         client = AsyncMock()
-        client.get = AsyncMock(side_effect=[
-            MagicMock(status_code=200, json=lambda: {"items": [{"name": "Burger"}]}, text="{}"),
-            MagicMock(status_code=200, json=lambda: {"content": [{"id": "mgr-1"}]}, text="{}"),
-        ])
+        client.get = AsyncMock(
+            side_effect=[
+                MagicMock(status_code=200, json=lambda: {"items": [{"name": "Burger"}]}, text="{}"),
+                MagicMock(status_code=200, json=lambda: {"content": [{"id": "mgr-1"}]}, text="{}"),
+            ]
+        )
         client.post = AsyncMock(return_value=MagicMock(status_code=201, json=lambda: {}, text="{}"))
         ctx = MagicMock()
         ctx.__aenter__ = AsyncMock(return_value=client)
@@ -201,22 +217,27 @@ class TestEvalReview:
         )
         cfg = MagicMock(backend_url="http://test", agent_token="tok", google_api_key="key")
 
-        with patch("masova_agent.utils.config.get_config", return_value=cfg), patch(
-            "masova_agent.agents.review_response_agent.httpx.AsyncClient", return_value=ctx
-        ), patch("google.genai.Client", return_value=mock_genai):
-            result = await draft_review_response({
-                "reviewId": "rev-1",
-                "rating": 1,
-                "text": "Terrible cold food",
-                "storeId": "DOM001",
-                "orderId": "ord-1",
-            })
+        with (
+            patch("masova_agent.utils.config.get_config", return_value=cfg),
+            patch("masova_agent.agents.review_response_agent.httpx.AsyncClient", return_value=ctx),
+            patch("google.genai.Client", return_value=mock_genai),
+        ):
+            result = await draft_review_response(
+                {
+                    "reviewId": "rev-1",
+                    "rating": 1,
+                    "text": "Terrible cold food",
+                    "storeId": "DOM001",
+                    "orderId": "ord-1",
+                }
+            )
         assert result.get("draftGenerated") is True or result.get("skipped") is not True
 
 
 # ---------------------------------------------------------------------------
 # 5. LLM raises → fallback
 # ---------------------------------------------------------------------------
+
 
 class TestEvalLlmFallback:
     @pytest.mark.asyncio
@@ -242,6 +263,7 @@ class TestEvalLlmFallback:
 # 6. Chat identity binding
 # ---------------------------------------------------------------------------
 
+
 class TestEvalChatIdentity:
     def test_spoofed_customer_id_ignored(self):
         from masova_agent.tools import backend_tools
@@ -250,9 +272,15 @@ class TestEvalChatIdentity:
         token = bind_identity(AgentIdentity("REAL-CUST", "CUSTOMER", None, "jwt-real"))
         try:
             with patch("masova_agent.tools.backend_tools.httpx.get") as g:
-                g.return_value = _mock_get(200, {
-                    "id": "REAL-CUST", "loyaltyPoints": 10, "loyaltyTier": "SILVER", "name": "Real",
-                })
+                g.return_value = _mock_get(
+                    200,
+                    {
+                        "id": "REAL-CUST",
+                        "loyaltyPoints": 10,
+                        "loyaltyTier": "SILVER",
+                        "name": "Real",
+                    },
+                )
                 # Tool takes no customer_id — identity from contextvars
                 text = backend_tools.get_loyalty_points()
                 # Request path must use JWT id, not a spoofed argument
@@ -268,6 +296,7 @@ class TestEvalChatIdentity:
 # 7. Cancel / refund manager approval copy
 # ---------------------------------------------------------------------------
 
+
 class TestEvalApprovalCopy:
     def test_cancel_mentions_manager(self):
         from masova_agent.tools.backend_tools import cancel_order
@@ -275,13 +304,18 @@ class TestEvalApprovalCopy:
 
         token = bind_identity(AgentIdentity("C1", "CUSTOMER", None, "jwt"))
         try:
-            with patch("masova_agent.tools.backend_tools.httpx.get") as g, patch(
-                "masova_agent.tools.backend_tools.httpx.post"
-            ) as p:
+            with (
+                patch("masova_agent.tools.backend_tools.httpx.get") as g,
+                patch("masova_agent.tools.backend_tools.httpx.post") as p,
+            ):
                 g.return_value = _mock_get(200, {"status": "RECEIVED"})
-                p.return_value = _mock_post(200, {
-                    "status": "PENDING_APPROVAL", "cancellationRequested": True,
-                })
+                p.return_value = _mock_post(
+                    200,
+                    {
+                        "status": "PENDING_APPROVAL",
+                        "cancellationRequested": True,
+                    },
+                )
                 text = cancel_order("ord-1", "changed mind")
             assert "manager" in text.lower()
         finally:
@@ -294,9 +328,13 @@ class TestEvalApprovalCopy:
         token = bind_identity(AgentIdentity("C1", "CUSTOMER", None, "jwt"))
         try:
             with patch("masova_agent.tools.backend_tools.httpx.post") as p:
-                p.return_value = _mock_post(201, {
-                    "status": "PENDING_APPROVAL", "refundId": "R1",
-                })
+                p.return_value = _mock_post(
+                    201,
+                    {
+                        "status": "PENDING_APPROVAL",
+                        "refundId": "R1",
+                    },
+                )
                 text = request_refund("ord-1", "missing item in bag")
             assert "manager" in text.lower() or "approval" in text.lower()
         finally:
@@ -307,12 +345,16 @@ class TestEvalApprovalCopy:
 # 8. Idempotency
 # ---------------------------------------------------------------------------
 
+
 class TestEvalIdempotency:
     @pytest.mark.asyncio
     async def test_second_po_same_key_noop(self):
-        with patch.object(ops_tools, "_require_token", return_value=None), patch.object(
-            ops_tools, "post_json", new_callable=AsyncMock, return_value=(201, {"id": "po"})
-        ) as post:
+        with (
+            patch.object(ops_tools, "_require_token", return_value=None),
+            patch.object(
+                ops_tools, "post_json", new_callable=AsyncMock, return_value=(201, {"id": "po"})
+            ) as post,
+        ):
             items = [{"id": "i1", "name": "X", "quantity": 5}]
             a = await ops_tools.create_draft_po("DOM001", "sup-1", items=items)
             b = await ops_tools.create_draft_po("DOM001", "sup-1", items=items)
@@ -324,6 +366,7 @@ class TestEvalIdempotency:
 # ---------------------------------------------------------------------------
 # 9. EXECUTE rejected
 # ---------------------------------------------------------------------------
+
 
 class TestEvalExecutePolicy:
     def test_execute_tools_rejected(self):

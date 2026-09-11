@@ -5,13 +5,14 @@ Input: review text + order details + item names + complaint keywords
 Output: draft personalised manager response pushed to notification feed
 Uses LLM (Gemini 2.0 Flash Lite) — personalised, not a template
 """
+
 import httpx
 import logging
 from typing import Dict, Any
 
 logger = logging.getLogger(__name__)
 
-DRAFT_RESPONSE_PROMPT = """You are a professional restaurant manager writing a response to a customer review.
+DRAFT_RESPONSE_PROMPT = """You are a restaurant manager writing a customer-review response.
 
 Review: {review_text}
 Rating: {rating}/5
@@ -26,8 +27,6 @@ Write a personalised, empathetic response that:
 
 Maximum 100 words. No marketing language. No "We value your feedback" cliches.
 """
-
-
 
 
 REVIEW_INSTRUCTION = """You are MaSoVa Review Response Agent (ops).
@@ -85,6 +84,7 @@ async def draft_review_response(review_data: Dict[str, Any]) -> Dict[str, Any]:
         prefer_llm=prefer,
     )
 
+
 async def _rule_draft_review_response(review_data: Dict[str, Any]) -> Dict[str, Any]:
     """Generate a draft response for a low-rating review."""
     rating = review_data.get("rating", 5)
@@ -137,7 +137,7 @@ async def _rule_draft_review_response(review_data: Dict[str, Any]) -> Dict[str, 
                 model="gemini-2.5-flash-lite-preview-06-17",
                 contents=prompt,
             )
-            draft_response_text = response.text.strip()
+            draft_response_text = (response.text or "").strip()
         except Exception as e:
             logger.warning("Gemini call failed (%s), falling back to rule-based response", e)
             draft_response_text = _rule_based_response(review_text, rating, items_str, keywords)
@@ -151,6 +151,7 @@ async def _rule_draft_review_response(review_data: Dict[str, Any]) -> Dict[str, 
 
         if managers_res.status_code == 200:
             from . import _unwrap
+
             for manager in _unwrap(managers_res.json()):
                 await client.post(
                     f"{backend_url}/api/notifications",
@@ -159,7 +160,7 @@ async def _rule_draft_review_response(review_data: Dict[str, Any]) -> Dict[str, 
                         "type": "REVIEW_DRAFT_RESPONSE",
                         "title": f"New {rating}\u2605 Review — Draft Response Ready",
                         "message": (
-                            f"Review: \"{review_text[:80]}...\"\n\n"
+                            f'Review: "{review_text[:80]}..."\n\n'
                             f"Draft response: {draft_response_text}"
                         ),
                         "data": {
@@ -172,15 +173,32 @@ async def _rule_draft_review_response(review_data: Dict[str, Any]) -> Dict[str, 
                 )
 
     logger.info("Draft response generated for review %s (rating: %d)", review_id, rating)
-    return {"reviewId": review_id, "draftGenerated": True, "responseLength": len(draft_response_text)}
+    return {
+        "reviewId": review_id,
+        "draftGenerated": True,
+        "responseLength": len(draft_response_text),
+    }
 
 
 def _extract_keywords(text: str) -> list:
     """Extract complaint keywords from review text."""
     complaint_terms = [
-        "cold", "slow", "late", "wrong", "missing", "rude", "dirty",
-        "overpriced", "raw", "burnt", "stale", "hair", "wait", "cancelled",
-        "never arrived", "incorrect",
+        "cold",
+        "slow",
+        "late",
+        "wrong",
+        "missing",
+        "rude",
+        "dirty",
+        "overpriced",
+        "raw",
+        "burnt",
+        "stale",
+        "hair",
+        "wait",
+        "cancelled",
+        "never arrived",
+        "incorrect",
     ]
     text_lower = text.lower()
     return [term for term in complaint_terms if term in text_lower]

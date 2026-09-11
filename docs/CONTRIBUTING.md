@@ -24,8 +24,8 @@ Full detail (branch protection, CI check name `test`, prune after merge, commit 
 
 3. **Configure secrets locally (never commit)**
    ```bash
-   cp .env.example .env   # if present; otherwise create root .env
-   # Set GOOGLE_API_KEY / LLM_API_KEY, JWT_SECRET, BACKEND_URL, etc. only in local .env
+   cp config/env.example .env
+   # Set LLM_API_KEY or GOOGLE_API_KEY, JWT_SECRET, AGENT_TRIGGER_API_KEY, AGENT_TOKEN, BACKEND_URL
    ```
 
 4. **Run tests**
@@ -50,9 +50,10 @@ masova-support/
 
 ### Python style
 
-- Follow PEP 8
-- Use Black for formatting: `make format` (if configured)
-- Run linters before committing: `make lint` (if configured)
+- Follow PEP 8 (line length 100, matching Black)
+- Format: `make format` (Black). CI runs `black --check`.
+- Lint/types: `make lint` (Black check, flake8, mypy)
+- Repo hygiene: `make hygiene`
 - Type hints for public functions
 - Docstrings for public APIs
 
@@ -64,7 +65,7 @@ masova-support/
 - `chore:` tooling / maintenance  
 - `test:` tests  
 
-No `Co-Authored-By` trailers. No secrets in commits.
+No AI-tool `Co-Authored-By` trailers. No secrets in commits. Never commit `AGENTS.md` or `CLAUDE.md`.
 
 ### Testing
 

@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 
 def backend_url() -> str:
-    return os.getenv("BACKEND_URL", "http://192.168.50.88:8080").rstrip("/")
+    return os.getenv("BACKEND_URL", "http://localhost:8080").rstrip("/")
 
 
 def agent_token() -> str:

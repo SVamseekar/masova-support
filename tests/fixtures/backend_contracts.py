@@ -26,19 +26,21 @@ from __future__ import annotations
 # ---------------------------------------------------------------------------
 
 # Canonical — com.MaSoVa.shared.enums.OrderStatus
-ORDER_STATUSES_CANONICAL = frozenset({
-    "RECEIVED",
-    "PREPARING",
-    "OVEN",
-    "BAKED",
-    "READY",
-    "DISPATCHED",
-    "OUT_FOR_DELIVERY",
-    "DELIVERED",
-    "SERVED",
-    "COMPLETED",
-    "CANCELLED",
-})
+ORDER_STATUSES_CANONICAL = frozenset(
+    {
+        "RECEIVED",
+        "PREPARING",
+        "OVEN",
+        "BAKED",
+        "READY",
+        "DISPATCHED",
+        "OUT_FOR_DELIVERY",
+        "DELIVERED",
+        "SERVED",
+        "COMPLETED",
+        "CANCELLED",
+    }
+)
 
 # Accepted by tools (canonical + legacy PENDING dual-tolerance)
 ORDER_STATUSES = ORDER_STATUSES_CANONICAL | frozenset({"PENDING"})
@@ -47,15 +49,17 @@ ORDER_STATUSES = ORDER_STATUSES_CANONICAL | frozenset({"PENDING"})
 CANCELLABLE_STATUSES = frozenset({"PENDING", "RECEIVED"})
 
 # Active kitchen / delivery pipeline (pricing overload, wait-time)
-ACTIVE_ORDER_STATUSES = frozenset({
-    "RECEIVED",
-    "PREPARING",
-    "OVEN",
-    "BAKED",
-    "READY",
-    "DISPATCHED",
-    "OUT_FOR_DELIVERY",
-})
+ACTIVE_ORDER_STATUSES = frozenset(
+    {
+        "RECEIVED",
+        "PREPARING",
+        "OVEN",
+        "BAKED",
+        "READY",
+        "DISPATCHED",
+        "OUT_FOR_DELIVERY",
+    }
+)
 
 PO_STATUSES = frozenset({"DRAFT", "PENDING_APPROVAL", "APPROVED", "SENT", "CANCELLED"})
 CAMPAIGN_STATUSES = frozenset({"DRAFT", "SCHEDULED", "ACTIVE", "PAUSED", "COMPLETED", "CANCELLED"})
@@ -72,9 +76,7 @@ SAMPLE_ORDER = {
     "status": "PREPARING",
     "storeId": "DOM001",
     "customerId": "cust-1",
-    "items": [
-        {"quantity": 1, "name": "Margherita", "menuItemId": "menu-1", "unitPrice": 12.5}
-    ],
+    "items": [{"quantity": 1, "name": "Margherita", "menuItemId": "menu-1", "unitPrice": 12.5}],
     "preparationTime": 20,
     "total": 12.5,
     "customerName": "Ada",
@@ -238,9 +240,7 @@ SAMPLE_FORECAST_SNIPPET = {
 }
 
 SAMPLE_USERS_MANAGERS = {
-    "content": [
-        {"id": "mgr-1", "name": "Manager One", "type": "MANAGER", "storeId": "DOM001"}
-    ]
+    "content": [{"id": "mgr-1", "name": "Manager One", "type": "MANAGER", "storeId": "DOM001"}]
 }
 
 SAMPLE_PRODUCTS_ANALYTICS = {

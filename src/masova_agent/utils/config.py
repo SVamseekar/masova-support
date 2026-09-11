@@ -1,6 +1,7 @@
 """
 Configuration management for MaSoVa Agent
 """
+
 import os
 from typing import Optional
 from dataclasses import dataclass
@@ -12,6 +13,7 @@ from ..exceptions import ConfigurationError
 @dataclass
 class AgentConfig:
     """Agent configuration"""
+
     name: str = "MaSoVa_Intelligence"
     # Model id is env-driven (LLM_MODEL) so the service stays provider-agnostic.
     # Public docs still describe Gemini / Google ADK.
@@ -24,6 +26,7 @@ class AgentConfig:
 @dataclass
 class APIConfig:
     """API configuration"""
+
     google_api_key: str  # resolved from LLM_API_KEY or GOOGLE_API_KEY
     use_vertex_ai: bool = False
     location_api_url: str = "http://ip-api.com/json/"
@@ -33,6 +36,7 @@ class APIConfig:
 @dataclass
 class CacheConfig:
     """Cache configuration"""
+
     enabled: bool = True
     ttl_seconds: int = 3600  # 1 hour
     max_size: int = 1000
@@ -41,6 +45,7 @@ class CacheConfig:
 @dataclass
 class LoggingConfig:
     """Logging configuration"""
+
     level: str = "INFO"
     format: str = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
     file: Optional[str] = None
@@ -70,17 +75,16 @@ class Config:
         self.api = self._load_api_config()
         self.cache = CacheConfig()
         self.logging = LoggingConfig(
-            level=os.getenv("LOG_LEVEL", "INFO"),
-            file=os.getenv("LOG_FILE")
+            level=os.getenv("LOG_LEVEL", "INFO"), file=os.getenv("LOG_FILE")
         )
 
         # Agent infrastructure config
-        self.backend_url: str = os.getenv("BACKEND_URL", "http://192.168.50.88:8080")
+        self.backend_url: str = os.getenv("BACKEND_URL", "http://localhost:8080")
         self.agent_token: str = os.getenv("AGENT_TOKEN", "")
         self.google_api_key: str = self.api.google_api_key
         self.llm_api_key: str = self.api.google_api_key
         self.llm_model: str = self.agent.model
-        self.rabbitmq_url: str = os.getenv("RABBITMQ_URL", "amqp://guest:guest@192.168.50.88:5672/")
+        self.rabbitmq_url: str = os.getenv("RABBITMQ_URL", "amqp://guest:guest@localhost:5672/")
 
     def _load_api_config(self) -> APIConfig:
         """Load API configuration from environment.
@@ -100,11 +104,8 @@ class Config:
         return APIConfig(
             google_api_key=api_key,
             use_vertex_ai=use_vertex,
-            location_api_url=os.getenv(
-                "LOCATION_API_URL",
-                "http://ip-api.com/json/"
-            ),
-            location_timeout=float(os.getenv("LOCATION_TIMEOUT", "5.0"))
+            location_api_url=os.getenv("LOCATION_API_URL", "http://ip-api.com/json/"),
+            location_timeout=float(os.getenv("LOCATION_TIMEOUT", "5.0")),
         )
 
     @classmethod

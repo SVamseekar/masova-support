@@ -1,6 +1,7 @@
 """
 Test Google GenAI API connection
 """
+
 import sys
 from pathlib import Path
 
@@ -21,7 +22,7 @@ def main():
     try:
         # Get config
         config = get_config()
-        print(f"✅ Configuration loaded")
+        print("✅ Configuration loaded")
         print(f"   Model: {config.agent.model}")
         print(f"   Use Vertex AI: {config.api.use_vertex_ai}")
 
@@ -29,11 +30,10 @@ def main():
         print("\n📡 Making test API call...")
         client = genai.Client(api_key=config.api.google_api_key)
         response = client.models.generate_content(
-            model=config.agent.model,
-            contents="Say 'Connection successful' in exactly two words."
+            model=config.agent.model, contents="Say 'Connection successful' in exactly two words."
         )
 
-        print(f"\n✅ API Response:")
+        print("\n✅ API Response:")
         print(f"   {response.text}")
 
         print("\n" + "=" * 60)
@@ -43,7 +43,7 @@ def main():
 
     except Exception as e:
         logger.error(f"Connection test failed: {e}", exc_info=True)
-        print(f"\n❌ Connection test FAILED:")
+        print("\n❌ Connection test FAILED:")
         print(f"   {e}")
         print("\n" + "=" * 60)
         print("❌ Please check your GOOGLE_API_KEY in .env")

@@ -30,10 +30,11 @@ logger = logging.getLogger(__name__)
 _adk_session_service = InMemorySessionService()
 
 # Redis-backed service used only for append_turn history persistence
-_redis_url = os.getenv("REDIS_URL", "redis://192.168.50.88:6379/1")
+_redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/1")
 _session_service = RedisSessionService(redis_url=_redis_url)
 
 _created_sessions: dict[str, str] = {}  # session_key -> actual session_id
+
 
 def _resolve_model() -> str:
     return os.getenv("LLM_MODEL", os.getenv("GOOGLE_MODEL", "gemini-2.5-flash"))
@@ -181,4 +182,5 @@ def send_message(
     session_id: str = "default",
 ) -> str:
     """Synchronous wrapper for CLI use."""
-    return asyncio.run(send_message_async(message, user_id, session_id))
+    reply, _session_id = asyncio.run(send_message_async(message, user_id, session_id))
+    return reply

@@ -4,7 +4,7 @@ AI-powered customer support and ops agents for the MaSoVa restaurant platform, b
 
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
 [![Google ADK](https://img.shields.io/badge/Google-ADK-green.svg)](https://github.com/google/adk-python)
-[![CI](https://img.shields.io/badge/CI-pytest-blue.svg)](.github/workflows/ci.yml)
+[![CI](https://github.com/SVamseekar/masova-support/actions/workflows/ci.yml/badge.svg)](https://github.com/SVamseekar/masova-support/actions/workflows/ci.yml)
 
 ## Overview
 
@@ -24,7 +24,7 @@ See [docs/AGENT_PLATFORM.md](docs/AGENT_PLATFORM.md) for architecture,
 
 ### Prerequisites
 
-- Python 3.9–3.12
+- Python **3.9–3.12** (CI runs 3.12; container image is 3.11)
 - Gemini / Google GenAI API key
 - Optional: Redis (sessions), RabbitMQ (review events), MaSoVa backend
 
@@ -37,6 +37,7 @@ pip install -r requirements.txt
 pip install -e .
 cp config/env.example .env
 # set LLM_API_KEY or GOOGLE_API_KEY, JWT_SECRET, AGENT_TRIGGER_API_KEY, AGENT_TOKEN, BACKEND_URL
+# templates: .env.example and config/env.example (keep in sync)
 ```
 
 ### Run API
@@ -53,9 +54,12 @@ uvicorn src.masova_agent.main:app --host 0.0.0.0 --port 8000 --reload
 
 ```bash
 pytest tests/ -q
+# or: make test
+make lint    # black --check, flake8, mypy
+make hygiene
 ```
 
-Unit tests mock HTTP and LLM; no Dell Redis/RabbitMQ/backend required. CI runs the same suite on pull requests.
+Unit tests mock HTTP and LLM; no live Redis/RabbitMQ/backend required. CI runs hygiene, flake8 syntax checks, package import, pytest, and `pip-audit` on pull requests and `main`.
 
 ### Docker
 
@@ -89,6 +93,14 @@ config/env.example
 
 Customer tools never trust LLM-supplied customer IDs; identity is bound from the verified JWT.
 
+## Releases
+
+Semantic versions `vMAJOR.MINOR.PATCH`. See [docs/RELEASING.md](docs/RELEASING.md) and [CHANGELOG.md](CHANGELOG.md).
+
+## Security
+
+See [SECURITY.md](SECURITY.md). Do not open public issues for vulnerabilities.
+
 ## License
 
-Proprietary — MaSoVa.
+Proprietary — MaSoVa. See [LICENSE](LICENSE).

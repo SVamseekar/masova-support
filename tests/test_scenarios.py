@@ -1,6 +1,7 @@
 """
 Test scenarios for MaSoVa Agent
 """
+
 import sys
 from pathlib import Path
 
@@ -53,29 +54,22 @@ def main():
     results = []
 
     # Test 1: User identification and system briefing
-    results.append(test_scenario(
-        "User Identification",
-        "Hi, I'm Soura"
-    ))
+    results.append(test_scenario("User Identification", "Hi, I'm Soura"))
 
     # Test 2: General menu inquiry
-    results.append(test_scenario(
-        "Menu Inquiry",
-        "Hi, what do you have to eat today?"
-    ))
+    results.append(test_scenario("Menu Inquiry", "Hi, what do you have to eat today?"))
 
     # Test 3: Specific item check
-    results.append(test_scenario(
-        "Item Availability",
-        "Is the Pepperoni pizza available?"
-    ))
+    results.append(test_scenario("Item Availability", "Is the Pepperoni pizza available?"))
 
     # Test 4: Order placement
-    results.append(test_scenario(
-        "Order Placement",
-        "I'd like to order a Margherita pizza and Garlic Bread. "
-        "My name is Sourav and I'm at 123 Pizza Lane."
-    ))
+    results.append(
+        test_scenario(
+            "Order Placement",
+            "I'd like to order a Margherita pizza and Garlic Bread. "
+            "My name is Sourav and I'm at 123 Pizza Lane.",
+        )
+    )
 
     # Summary
     print("\n" + "=" * 60)

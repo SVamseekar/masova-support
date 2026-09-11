@@ -94,7 +94,11 @@ def resolve_proposal(
     note: str = "",
 ) -> Optional[dict[str, Any]]:
     status = (status or "").upper()
-    if status not in (ProposalStatus.APPROVED.value, ProposalStatus.REJECTED.value, ProposalStatus.EXPIRED.value):
+    if status not in (
+        ProposalStatus.APPROVED.value,
+        ProposalStatus.REJECTED.value,
+        ProposalStatus.EXPIRED.value,
+    ):
         raise ValueError("status must be APPROVED, REJECTED, or EXPIRED")
     rec = get_proposal(proposal_id)
     if not rec:

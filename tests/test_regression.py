@@ -3,19 +3,20 @@ Regression tests for bugs found and fixed in the Phase 6 code review.
 
 Each test is named after the specific issue it guards against.
 """
+
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 from datetime import datetime as real_datetime, timedelta
-
 
 # ---------------------------------------------------------------------------
 # Shared helpers (same as test_agents.py)
 # ---------------------------------------------------------------------------
+
 
 def _resp(status: int, body):
     r = MagicMock()
@@ -50,6 +51,7 @@ def _managers_paginated():
 # Bug 1: _notify_managers AttributeError when API returns a plain list
 # Affected: dynamic_pricing, shift_optimisation, churn_prevention, kitchen_coach
 # ---------------------------------------------------------------------------
+
 
 class TestNotifyManagersPlainList:
 
@@ -119,11 +121,11 @@ class TestNotifyManagersPlainList:
 # Bug 2: shift_optimisation days_until_monday — Monday trigger drafted wrong week
 # ---------------------------------------------------------------------------
 
+
 class TestShiftOptimisationMondayBug:
 
     def test_days_until_monday_when_today_is_monday(self):
         """When triggered on a Monday, week_start must be next Monday (7 days), not 14."""
-        from masova_agent.agents.shift_optimisation_agent import _build_draft_shifts
 
         # Simulate the fixed formula directly
         monday = real_datetime(2026, 6, 8)  # a known Monday (weekday=0)
@@ -177,6 +179,7 @@ class TestShiftOptimisationMondayBug:
 # Bug 3: Repository save() key collision after deletion
 # ---------------------------------------------------------------------------
 
+
 class TestRepositorySaveKeyCollision:
 
     def test_customer_save_does_not_overwrite_after_delete(self):
@@ -205,7 +208,6 @@ class TestRepositorySaveKeyCollision:
     def test_customer_save_updates_existing_not_duplicate(self):
         """Saving a customer that already exists must update, not add a duplicate."""
         from masova_agent.data.repositories import CustomerRepository
-        from masova_agent.data.models import Customer, CustomerTier
 
         repo = CustomerRepository()
         existing = repo.find_by_id("CUST-001")
@@ -242,6 +244,7 @@ class TestRepositorySaveKeyCollision:
 # Bug 4: send_message_async returns tuple — callers must unpack correctly
 # ---------------------------------------------------------------------------
 
+
 class TestSendMessageAsyncReturnsTuple:
 
     @pytest.mark.asyncio
@@ -251,6 +254,7 @@ class TestSendMessageAsyncReturnsTuple:
         Tests the contract without importing google.adk by implementing
         the same logic inline and verifying the tuple shape.
         """
+
         # Reproduce the core logic of send_message_async to verify the contract
         async def _ensure_session_stub(sessions, service, user_id, session_id):
             key = f"{user_id}:{session_id}"
@@ -267,7 +271,9 @@ class TestSendMessageAsyncReturnsTuple:
         mock_session.id = "actual-uuid-from-redis"
         mock_service.create_session = AsyncMock(return_value=mock_session)
 
-        actual_sid = await _ensure_session_stub(sessions, mock_service, "user-1", "client-session-1")
+        actual_sid = await _ensure_session_stub(
+            sessions, mock_service, "user-1", "client-session-1"
+        )
 
         # The actual session id must differ from the raw client session id
         # (because create_session generates a new UUID when called without session_id)
@@ -288,11 +294,14 @@ class TestSendMessageAsyncReturnsTuple:
 # Bug 5: Scheduler — all 6 jobs must be registered
 # ---------------------------------------------------------------------------
 
+
 class TestSchedulerJobRegistration:
 
     def test_register_jobs_declares_all_six_job_ids(self):
         """scheduler.py source must declare add_job calls for all 6 agent job IDs."""
-        scheduler_src = Path(__file__).parent.parent / "src" / "masova_agent" / "scheduler" / "scheduler.py"
+        scheduler_src = (
+            Path(__file__).parent.parent / "src" / "masova_agent" / "scheduler" / "scheduler.py"
+        )
         source = scheduler_src.read_text()
 
         expected_ids = [
@@ -311,26 +320,32 @@ class TestSchedulerJobRegistration:
 # Bug 6: _unwrap helper correctness
 # ---------------------------------------------------------------------------
 
+
 class TestUnwrapHelper:
 
     def test_unwrap_plain_list(self):
         from masova_agent.agents import _unwrap
+
         data = [{"id": "1"}, {"id": "2"}]
         assert _unwrap(data) == data
 
     def test_unwrap_paginated_dict(self):
         from masova_agent.agents import _unwrap
+
         data = {"content": [{"id": "1"}], "totalElements": 1}
         assert _unwrap(data) == [{"id": "1"}]
 
     def test_unwrap_empty_dict_returns_empty_list(self):
         from masova_agent.agents import _unwrap
+
         assert _unwrap({}) == []
 
     def test_unwrap_dict_with_none_content_returns_empty_list(self):
         from masova_agent.agents import _unwrap
+
         assert _unwrap({"content": None}) == []
 
     def test_unwrap_unexpected_type_returns_empty_list(self):
         from masova_agent.agents import _unwrap
+
         assert _unwrap("not a list or dict") == []

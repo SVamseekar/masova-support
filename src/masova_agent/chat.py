@@ -1,7 +1,10 @@
 """
 Interactive chat interface for MaSoVa Agent
 """
-from masova_agent import send_message, get_logger, AgentError
+
+from masova_agent.agent import send_message
+from masova_agent.exceptions import AgentError
+from masova_agent.utils import get_logger
 
 logger = get_logger(__name__)
 
