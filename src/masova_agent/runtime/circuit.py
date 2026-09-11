@@ -1,4 +1,7 @@
-"""Circuit breaker for LLM calls: opens after consecutive failures, half-open trial after cooldown."""
+"""Circuit breaker for LLM calls.
+
+Opens after consecutive failures; half-open trial after cooldown.
+"""
 
 from __future__ import annotations
 
