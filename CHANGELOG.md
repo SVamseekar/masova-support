@@ -23,7 +23,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Production env budgets: `OPS_MAX_TOOL_CALLS`, `OPS_CONTEXT_CHARS`, `OPS_PREFER_LLM`, `OPS_LLM_MODEL`
 - `pyproject.toml` version aligned to last changelog release **0.4.0** (no Git tag backfill)
 - Environment templates use localhost placeholders (not machine-specific hosts)
-- CI: SHA-pinned Actions, hygiene gate, flake8 syntax/undefined-name checks, package import, pip-audit
+- CI required gates: Black, flake8, mypy, wheel build, hygiene, pytest, pip-audit
+- Removed historical `MIGRATION.md` (layout is documented in README)
 
 ## [0.4.0] - 2026-08-08
 

@@ -55,7 +55,7 @@ uvicorn src.masova_agent.main:app --host 0.0.0.0 --port 8000 --reload
 ```bash
 pytest tests/ -q
 # or: make test
-make lint
+make lint    # black --check, flake8, mypy
 make hygiene
 ```
 

@@ -51,8 +51,8 @@ masova-support/
 ### Python style
 
 - Follow PEP 8 (line length 100, matching Black)
-- Format: `make format` (Black). Full-tree format is not a CI gate yet.
-- CI lint: `make lint` (syntax and undefined names)
+- Format: `make format` (Black). CI runs `black --check`.
+- Lint/types: `make lint` (Black check, flake8, mypy)
 - Repo hygiene: `make hygiene`
 - Type hints for public functions
 - Docstrings for public APIs

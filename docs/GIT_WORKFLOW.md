@@ -65,11 +65,10 @@ Public docs and README describe **Gemini / Google ADK**. Do not put internal pro
 
 - Workflow: `.github/workflows/ci.yml`
 - Required check name: **`test`** (must stay this name — branch protection uses it)
-- On pull requests and pushes to `main`: install from `requirements.txt`, repository hygiene, flake8 syntax/undefined-name checks, package import, unit tests (dummy env, no live LLM/backend), `pip-audit` (starlette 1.x CVEs ignored until ADK allows that upgrade — see `SECURITY.md`)
+- On pull requests and pushes to `main`: install from `requirements.txt`, repository hygiene, Black `--check`, flake8, mypy, wheel build, package import, unit tests (dummy env, no live LLM/backend), `pip-audit` (starlette 1.x CVEs ignored until ADK allows that upgrade — see `SECURITY.md`)
 - Official Actions pinned to commit SHAs
 - `permissions: contents: read`
 - Concurrency cancels outdated runs on the same ref
-- Full Black / flake8 / mypy are **not** required gates yet (they fail on the current tree). Do not skip the existing gates to keep CI green.
 
 ## Dependabot
 

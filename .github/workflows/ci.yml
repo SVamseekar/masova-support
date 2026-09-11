@@ -36,15 +36,24 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install -e . --no-deps
-          pip install pytest pytest-asyncio httpx PyJWT flake8 pip-audit
+          pip install pytest pytest-asyncio httpx PyJWT flake8 black mypy pip-audit build
 
       - name: Repository hygiene
         run: |
           git fetch --no-tags origin "${{ github.base_ref || 'main' }}" || true
           bash scripts/check-hygiene.sh
 
-      - name: Lint (syntax and undefined names)
-        run: flake8 src tests --select=E9,F63,F7,F82 --show-source --statistics
+      - name: Format (Black)
+        run: black --check src tests
+
+      - name: Lint (flake8)
+        run: flake8 src tests --show-source --statistics
+
+      - name: Type check (mypy)
+        run: mypy src
+
+      - name: Production package build
+        run: python -m build --wheel --outdir dist/
 
       - name: Verify package import
         run: python -c "import masova_agent"

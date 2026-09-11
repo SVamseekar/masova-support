@@ -27,8 +27,10 @@ clean:  ## Clean up generated files
 	find . -type d -name "*.egg-info" -exec rm -rf {} + 2>/dev/null || true
 	rm -rf build/ dist/ .pytest_cache/ 2>/dev/null || true
 
-lint:  ## Syntax and undefined-name checks (CI gate)
-	flake8 src tests --select=E9,F63,F7,F82 --show-source --statistics
+lint:  ## Format, flake8, and mypy (CI gates)
+	black --check src tests
+	flake8 src tests --show-source --statistics
+	mypy src
 
 format:  ## Format code with black
 	black src/ tests/
