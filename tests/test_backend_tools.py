@@ -137,6 +137,22 @@ class TestGetOrderStatus:
             result = get_order_status("ORD-003")
         assert "cancelled" in result.lower()
 
+    def test_ready_order_has_dedicated_message(self):
+        from masova_agent.tools.backend_tools import get_order_status
+
+        with patch("masova_agent.tools.backend_tools.httpx.get") as mock_get:
+            mock_get.return_value = _mock_get(
+                200,
+                {
+                    "status": "READY",
+                    "orderNumber": "ORD-004",
+                    "items": [],
+                },
+            )
+            result = get_order_status("ORD-004")
+        assert "ready" in result.lower()
+        assert "is currently READY" not in result
+
 
 # ---------------------------------------------------------------------------
 # get_menu_items
@@ -458,7 +474,13 @@ class TestRequestRefund:
     def test_valid_refund_request(self):
         from masova_agent.tools.backend_tools import request_refund
 
-        with patch("masova_agent.tools.backend_tools.httpx.post") as mock_post:
+        with (
+            patch("masova_agent.tools.backend_tools.httpx.get") as mock_get,
+            patch("masova_agent.tools.backend_tools.httpx.post") as mock_post,
+        ):
+            mock_get.return_value = _mock_get(
+                200, {"transactionId": "TXN-1", "amount": 12.5, "orderId": "ORD-001"}
+            )
             mock_post.return_value = _mock_post(
                 201,
                 {
@@ -467,6 +489,11 @@ class TestRequestRefund:
                 },
             )
             result = request_refund("ORD-001", "Wrong items delivered")
+        post_body = mock_post.call_args.kwargs.get("json", {})
+        assert post_body.get("transactionId") == "TXN-1"
+        assert post_body.get("amount") == 12.5
+        assert post_body.get("type") == "FULL"
+        assert "orderId" not in post_body
         assert "REF-123" in result or "refund" in result.lower()
         assert "pending manager approval" in result.lower()
         assert "no refund has been processed" in result.lower()
@@ -477,10 +504,32 @@ class TestRequestRefund:
         result = request_refund("ORD-001", "bad")
         assert "reason" in result.lower()
 
+    def test_no_payment_record_gives_safe_message(self):
+        from masova_agent.tools.backend_tools import request_refund
+
+        with patch("masova_agent.tools.backend_tools.httpx.get") as mock_get:
+            mock_get.side_effect = Exception("not found")
+            result = request_refund("ORD-001", "Completely wrong order received")
+        assert "contact support" in result.lower()
+
+    def test_payment_missing_transaction_id_gives_safe_message(self):
+        from masova_agent.tools.backend_tools import request_refund
+
+        with patch("masova_agent.tools.backend_tools.httpx.get") as mock_get:
+            mock_get.return_value = _mock_get(200, {"amount": 12.5})
+            result = request_refund("ORD-001", "Completely wrong order received")
+        assert "couldn't find a completed payment" in result.lower()
+
     def test_api_error_gives_fallback(self):
         from masova_agent.tools.backend_tools import request_refund
 
-        with patch("masova_agent.tools.backend_tools.httpx.post") as mock_post:
+        with (
+            patch("masova_agent.tools.backend_tools.httpx.get") as mock_get,
+            patch("masova_agent.tools.backend_tools.httpx.post") as mock_post,
+        ):
+            mock_get.return_value = _mock_get(
+                200, {"transactionId": "TXN-1", "amount": 12.5, "orderId": "ORD-001"}
+            )
             mock_post.side_effect = Exception("timeout")
             result = request_refund("ORD-001", "Completely wrong order received")
         assert "3" in result or "days" in result.lower() or "logged" in result.lower()

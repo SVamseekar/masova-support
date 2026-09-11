@@ -323,11 +323,15 @@ class TestEvalApprovalCopy:
 
     def test_refund_mentions_manager(self):
         from masova_agent.tools.backend_tools import request_refund
-        from tests.test_backend_tools import _mock_post
+        from tests.test_backend_tools import _mock_get, _mock_post
 
         token = bind_identity(AgentIdentity("C1", "CUSTOMER", None, "jwt"))
         try:
-            with patch("masova_agent.tools.backend_tools.httpx.post") as p:
+            with (
+                patch("masova_agent.tools.backend_tools.httpx.get") as g,
+                patch("masova_agent.tools.backend_tools.httpx.post") as p,
+            ):
+                g.return_value = _mock_get(200, {"transactionId": "TXN-1", "amount": 9.5})
                 p.return_value = _mock_post(
                     201,
                     {

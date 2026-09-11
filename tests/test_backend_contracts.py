@@ -149,9 +149,15 @@ class TestContractFixtures:
 
     def test_refund_pending_fixture(self):
         from masova_agent.tools.backend_tools import request_refund
-        from tests.test_backend_tools import _mock_post
+        from tests.test_backend_tools import _mock_get, _mock_post
 
-        with patch("masova_agent.tools.backend_tools.httpx.post") as p:
+        with (
+            patch("masova_agent.tools.backend_tools.httpx.get") as g,
+            patch("masova_agent.tools.backend_tools.httpx.post") as p,
+        ):
+            g.return_value = _mock_get(
+                200, {"transactionId": "TXN-1", "amount": SAMPLE_REFUND_RESPONSE["amount"]}
+            )
             p.return_value = _mock_post(201, SAMPLE_REFUND_RESPONSE)
             text = request_refund("ord-abc", "Wrong items delivered")
         assert "pending manager approval" in text.lower() or "manager" in text.lower()
