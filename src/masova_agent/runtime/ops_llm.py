@@ -190,9 +190,26 @@ async def run_genai_tool_loop(
     Raises on missing key / import / empty model responses so AgentRuntime
     can fall back to rule path.
     """
+    from .guardrails import screen_input, screen_output
+
     key = api_key if api_key is not None else llm_api_key()
     if not key:
         raise RuntimeError("LLM_API_KEY_not_configured")
+
+    goal_text = str(request.goal or "")
+    screened_goal, blocked = screen_input(goal_text)
+    if blocked:
+        return {
+            "status": "ok",
+            "summary": "I can't help with that request.",
+            "rationale": "",
+            "tools_used": [],
+            "tool_results": [],
+            "proposals": [],
+            "used_llm": False,
+            "blocked_by_guardrails": True,
+        }
+    request.goal = screened_goal
 
     policy = policy or PolicyEngine()
     allowed = [
@@ -324,6 +341,7 @@ async def run_genai_tool_loop(
         contents.append(genai_types.Content(role="user", parts=response_parts))
 
     proposals = extract_proposals_from_tool_results(tool_results)
+    final_text = screen_output(final_text) if final_text else final_text
     summary = final_text or (
         f"{request.agent_name}: {len(tools_used)} tool calls, {len(proposals)} proposals"
     )
