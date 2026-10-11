@@ -13,7 +13,7 @@ Fallback: threshold-based draft PO rule path.
 import httpx
 import logging
 from datetime import datetime
-from typing import Dict, List, Any
+from typing import Dict, List, Any, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -110,19 +110,33 @@ async def _rule_run_inventory_reorder() -> Dict[str, Any]:
 
     pos_drafted = 0
     items_checked = 0
+    failed_store_ids = []
 
     async with httpx.AsyncClient(timeout=30.0) as client:
         stores = await _get_stores(client, backend_url, headers)
+        if stores is None:
+            return {
+                "status": "error",
+                "error": "stores_unavailable",
+                "summary": "Store registry unavailable; inventory check not completed",
+                "pos_drafted": 0,
+                "items_checked": 0,
+            }
 
         for store in stores:
             store_id = store["id"]
 
-            inv_res = await client.get(
-                f"{backend_url}/api/inventory",
-                params={"storeId": store_id, "lowStock": "true"},
-                headers=headers,
-            )
+            try:
+                inv_res = await client.get(
+                    f"{backend_url}/api/inventory",
+                    params={"storeId": store_id, "lowStock": "true"},
+                    headers=headers,
+                )
+            except httpx.RequestError:
+                failed_store_ids.append(store_id)
+                continue
             if inv_res.status_code != 200:
+                failed_store_ids.append(store_id)
                 continue
 
             inv_items = inv_res.json()
@@ -174,6 +188,18 @@ async def _rule_run_inventory_reorder() -> Dict[str, Any]:
     logger.info(
         "Inventory reorder complete: %d POs drafted, %d items checked", pos_drafted, items_checked
     )
+    if failed_store_ids:
+        return {
+            "status": "error",
+            "error": "inventory_unavailable",
+            "failed_store_ids": failed_store_ids,
+            "pos_drafted": pos_drafted,
+            "items_checked": items_checked,
+            "summary": (
+                f"Inventory check incomplete: {len(failed_store_ids)} store(s) unavailable; "
+                f"{pos_drafted} draft PO(s), {items_checked} items checked"
+            ),
+        }
     return {
         "pos_drafted": pos_drafted,
         "items_checked": items_checked,
@@ -195,10 +221,12 @@ def _clamped_po_line(item: Dict) -> Dict:
     }
 
 
-async def _get_stores(client: httpx.AsyncClient, backend_url: str, headers: dict) -> List[Dict]:
+async def _get_stores(
+    client: httpx.AsyncClient, backend_url: str, headers: dict
+) -> Optional[List[Dict]]:
     res = await client.get(f"{backend_url}/api/stores", headers=headers)
     if res.status_code != 200:
-        return []
+        return None
     data = res.json()
     return data if isinstance(data, list) else data.get("content") or []
 

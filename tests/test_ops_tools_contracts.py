@@ -3,6 +3,7 @@
 from unittest.mock import AsyncMock, patch
 
 import pytest
+import httpx
 
 from masova_agent.tools import ops_tools
 
@@ -87,3 +88,76 @@ async def test_churn_prevention_creates_no_campaign_on_empty_result(monkeypatch)
     monkeypatch.delenv("AGENT_TOKEN", raising=False)
     result = await churn_prevention_agent.run_churn_prevention()
     assert result is not None
+
+
+@pytest.mark.asyncio
+async def test_low_stock_outage_is_not_a_successful_empty_assessment():
+    with patch.object(
+        ops_tools,
+        "get_json",
+        new=AsyncMock(side_effect=[(200, [{"id": "s1"}]), (503, {})]),
+    ):
+        result = await ops_tools.list_low_stock()
+    assert result["ok"] is False
+    assert result["error"] == "inventory_unavailable"
+    assert result["failed_store_ids"] == ["s1"]
+    assert result["items"] == []
+
+
+@pytest.mark.asyncio
+async def test_low_stock_partial_coverage_preserves_zero_stock_and_reports_failed_store():
+    with patch.object(
+        ops_tools,
+        "get_json",
+        new=AsyncMock(
+            side_effect=[
+                (200, [{"id": "s1"}, {"id": "s2"}]),
+                (
+                    200,
+                    [
+                        {
+                            "id": "item1",
+                            "currentStock": 0,
+                            "quantity": 99,
+                            "minimumStock": 0,
+                            "minStock": 9,
+                        }
+                    ],
+                ),
+                (403, {}),
+            ]
+        ),
+    ):
+        result = await ops_tools.list_low_stock()
+    assert result["ok"] is False
+    assert result["failed_store_ids"] == ["s2"]
+    assert result["count"] == 1
+    assert result["items"][0]["current_stock"] == 0
+    assert result["items"][0]["minimum_stock"] == 0
+
+
+@pytest.mark.asyncio
+async def test_low_stock_verified_empty_inventory_is_successful():
+    with patch.object(ops_tools, "get_json", new=AsyncMock(return_value=(200, []))):
+        result = await ops_tools.list_low_stock("s1")
+    assert result == {"ok": True, "items": [], "count": 0}
+
+
+@pytest.mark.asyncio
+async def test_low_stock_transport_failure_retains_completed_store_data():
+    with patch.object(
+        ops_tools,
+        "get_json",
+        new=AsyncMock(
+            side_effect=[
+                (200, [{"id": "s1"}, {"id": "s2"}]),
+                (200, [{"id": "item1", "currentStock": 0}]),
+                httpx.ConnectError("unavailable"),
+            ]
+        ),
+    ):
+        result = await ops_tools.list_low_stock()
+    assert result["ok"] is False
+    assert result["failed_store_ids"] == ["s2"]
+    assert result["count"] == 1
+    assert result["items"][0]["id"] == "item1"

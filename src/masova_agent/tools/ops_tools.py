@@ -101,11 +101,17 @@ async def list_low_stock(store_id: str = "") -> dict[str, Any]:
             store_ids = [s["id"] for s in unwrap_list(body) if s.get("id")]
 
         items: list[dict] = []
+        failed_store_ids: list[str] = []
         for sid in store_ids:
-            st, body = await get_json(
-                client, "/api/inventory", params={"storeId": sid, "lowStock": "true"}
-            )
+            try:
+                st, body = await get_json(
+                    client, "/api/inventory", params={"storeId": sid, "lowStock": "true"}
+                )
+            except httpx.RequestError:
+                failed_store_ids.append(sid)
+                continue
             if st != 200:
+                failed_store_ids.append(sid)
                 continue
             for item in unwrap_list(body):
                 items.append(
@@ -113,13 +119,29 @@ async def list_low_stock(store_id: str = "") -> dict[str, Any]:
                         "id": item.get("id"),
                         "store_id": sid,
                         "item_name": item.get("itemName") or item.get("name", "Unknown"),
-                        "current_stock": item.get("currentStock") or item.get("quantity"),
-                        "minimum_stock": item.get("minimumStock") or item.get("minStock"),
+                        "current_stock": (
+                            item.get("currentStock")
+                            if item.get("currentStock") is not None
+                            else item.get("quantity")
+                        ),
+                        "minimum_stock": (
+                            item.get("minimumStock")
+                            if item.get("minimumStock") is not None
+                            else item.get("minStock")
+                        ),
                         "reorder_quantity": item.get("reorderQuantity", 10),
                         "unit_cost": item.get("unitCost", 0),
                         "preferred_supplier_id": item.get("preferredSupplierId"),
                     }
                 )
+        if failed_store_ids:
+            return {
+                "ok": False,
+                "error": "inventory_unavailable",
+                "failed_store_ids": failed_store_ids,
+                "items": items,
+                "count": len(items),
+            }
         return {"ok": True, "items": items, "count": len(items)}
 
 

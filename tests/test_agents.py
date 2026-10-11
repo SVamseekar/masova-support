@@ -14,6 +14,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 import pytest
+import httpx
 from unittest.mock import AsyncMock, patch, MagicMock
 from datetime import datetime
 
@@ -121,6 +122,60 @@ class TestDemandForecastingAgent:
 
 
 class TestInventoryReorderAgent:
+    @pytest.mark.asyncio
+    async def test_transport_failure_retains_completed_store_draft_counts(self):
+        from masova_agent.agents.inventory_reorder_agent import _rule_run_inventory_reorder
+
+        client = AsyncMock()
+        client.get = AsyncMock(
+            side_effect=[
+                _resp(200, [{"id": "s1"}, {"id": "s2"}]),
+                _resp(200, [{"id": "item1", "preferredSupplierId": "supplier1"}]),
+                _resp(200, []),
+                httpx.ConnectError("unavailable"),
+            ]
+        )
+        client.post = AsyncMock(return_value=_resp(201, {"id": "synthetic-draft"}))
+        with (
+            patch("masova_agent.utils.config.get_config", return_value=_mock_config()),
+            patch(
+                "masova_agent.agents.inventory_reorder_agent.httpx.AsyncClient",
+                return_value=_async_client_ctx(client),
+            ),
+        ):
+            result = await _rule_run_inventory_reorder()
+        assert result["status"] == "error"
+        assert result["failed_store_ids"] == ["s2"]
+        assert result["pos_drafted"] == 1
+        assert result["items_checked"] == 1
+        assert client.post.await_count == 1
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "responses",
+        [
+            [_resp(503, {})],
+            [_resp(200, _stores()), _resp(503, {})],
+        ],
+    )
+    async def test_unavailable_registry_or_inventory_reports_error_without_writes(self, responses):
+        from masova_agent.agents.inventory_reorder_agent import run_inventory_reorder
+
+        client = AsyncMock()
+        client.get = AsyncMock(side_effect=responses)
+        with (
+            patch("masova_agent.utils.config.get_config", return_value=_mock_config()),
+            patch(
+                "masova_agent.agents.inventory_reorder_agent.httpx.AsyncClient",
+                return_value=_async_client_ctx(client),
+            ),
+        ):
+            result = await run_inventory_reorder()
+        assert result["status"] == "error"
+        assert result["error"]
+        assert result.get("pos_drafted", 0) == 0
+        client.post.assert_not_called()
+
     @pytest.mark.asyncio
     async def test_drafts_pos_for_low_stock_items(self):
         from masova_agent.agents.inventory_reorder_agent import run_inventory_reorder
