@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
-- Product documentation lives at the repository root; duplicate `docs/` files removed
+- Product documentation lives in `docs/` (AGENT_PLATFORM, CAPABILITY_MAP, RELEASING, RUNBOOK, SMOKE); internal planning docs are no longer tracked
 
 ## [0.5.0] - 2026-09-11
 

@@ -5,8 +5,7 @@ default test run (see pyproject.toml addopts). Run explicitly:
     RUN_INTEGRATION_TESTS=1 BACKEND_URL=http://localhost:8080 \\
       AGENT_TOKEN=<ops token> pytest -m integration
 
-Requires a real, reachable backend and valid auth — see
-docs/backend-connectivity-verification-spec.md.
+Requires a real, reachable backend and valid auth.
 
 These tests distinguish "endpoint exists and responded" from "404/400 because
 the path is wrong." They do not assert business data. POST purchase-order
