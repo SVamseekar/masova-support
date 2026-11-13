@@ -10,6 +10,7 @@ Never live-calls in unit tests — inject llm_client or use mock_tool_loop.
 
 from __future__ import annotations
 
+import asyncio
 import inspect
 import json
 import logging
@@ -240,7 +241,7 @@ async def run_genai_tool_loop(
             )
         )
 
-    client = genai.Client(api_key=key)
+    client = genai.Client(api_key=key, http_options=genai_types.HttpOptions(timeout=45000))
     model_id = model or ops_model_name()
     max_calls = request.max_tool_calls or _default_max_tool_calls()
 
@@ -283,66 +284,74 @@ async def run_genai_tool_loop(
         temperature=0.2,
     )
 
-    while calls < max_calls:
-        response = client.models.generate_content(
-            model=model_id,
-            contents=contents,
-            config=config,
-        )
-
-        # Parse function calls
-        fn_calls = []
-        text_parts: list[str] = []
-        candidate = None
-        try:
-            candidate = response.candidates[0] if response.candidates else None
-        except Exception:
-            candidate = None
-
-        if candidate and candidate.content and candidate.content.parts:
-            for part in candidate.content.parts:
-                fc = getattr(part, "function_call", None)
-                if fc and getattr(fc, "name", None):
-                    args = dict(fc.args) if getattr(fc, "args", None) else {}
-                    fn_calls.append((fc.name, args))
-                t = getattr(part, "text", None)
-                if t:
-                    text_parts.append(t)
-
-        if not fn_calls:
-            final_text = "\n".join(text_parts).strip()
-            break
-
-        # Append model turn
-        if candidate and candidate.content:
-            contents.append(candidate.content)
-
-        # Execute tools and append responses
-        response_parts = []
-        for name, args in fn_calls:
-            calls += 1
-            if calls > max_calls:
-                break
-            if name not in allowed or not policy.is_allowed(name, allowed):
-                result = {"ok": False, "error": "tool_not_allowed"}
-            else:
-                fn = tools.get(name)
-                if fn is None:
-                    result = {"ok": False, "error": "unknown_tool"}
-                else:
-                    result = await invoke_tool(fn, args if isinstance(args, dict) else {})
-                    tools_used.append(name)
-            tool_results.append({"tool": name, "args": args, "result": result})
-            response_parts.append(
-                genai_types.Part(
-                    function_response=genai_types.FunctionResponse(
-                        name=name,
-                        response=result if isinstance(result, dict) else {"result": result},
-                    )
-                )
+    try:
+        while calls < max_calls:
+            response = await asyncio.wait_for(
+                client.aio.models.generate_content(
+                    model=model_id,
+                    contents=contents,
+                    config=config,
+                ),
+                timeout=45,
             )
 
-        contents.append(genai_types.Content(role="user", parts=response_parts))
+            # Parse function calls
+            fn_calls = []
+            text_parts: list[str] = []
+            candidate = None
+            try:
+                candidate = response.candidates[0] if response.candidates else None
+            except Exception:
+                candidate = None
+
+            if candidate and candidate.content and candidate.content.parts:
+                for part in candidate.content.parts:
+                    fc = getattr(part, "function_call", None)
+                    if fc and getattr(fc, "name", None):
+                        args = dict(fc.args) if getattr(fc, "args", None) else {}
+                        fn_calls.append((fc.name, args))
+                    t = getattr(part, "text", None)
+                    if t and not getattr(part, "thought", False):
+                        text_parts.append(t)
+
+            if not fn_calls:
+                final_text = "\n".join(text_parts).strip()
+                break
+
+            # Append model turn
+            if candidate and candidate.content:
+                contents.append(candidate.content)
+
+            # Execute tools and append responses
+            response_parts = []
+            for name, args in fn_calls:
+                calls += 1
+                if calls > max_calls:
+                    break
+                if name not in allowed or not policy.is_allowed(name, allowed):
+                    result = {"ok": False, "error": "tool_not_allowed"}
+                else:
+                    fn = tools.get(name)
+                    if fn is None:
+                        result = {"ok": False, "error": "unknown_tool"}
+                    else:
+                        result = await invoke_tool(fn, args if isinstance(args, dict) else {})
+                        tools_used.append(name)
+                tool_results.append({"tool": name, "args": args, "result": result})
+                response_parts.append(
+                    genai_types.Part(
+                        function_response=genai_types.FunctionResponse(
+                            name=name,
+                            response=result if isinstance(result, dict) else {"result": result},
+                        )
+                    )
+                )
+
+            contents.append(genai_types.Content(role="user", parts=response_parts))
+
+    finally:
+        await client.aio.aclose()
+        client.close()
 
     proposals = extract_proposals_from_tool_results(tool_results)
     final_text = screen_output(final_text) if final_text else final_text

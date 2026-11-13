@@ -58,6 +58,9 @@ jobs:
       - name: Verify package import
         run: python -c "import masova_agent"
 
+      - name: Verify console audio lifecycle
+        run: node --test tests/test_console_voice.cjs
+
       - name: Run unit tests (no live LLM/backend)
         env:
           GOOGLE_API_KEY: test-not-a-real-key

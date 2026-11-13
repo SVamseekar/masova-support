@@ -12,6 +12,8 @@ AI-powered customer support and ops agents for the MaSoVa restaurant platform, b
 - **7 ops agents** — demand forecast, inventory reorder, churn, review response, shifts, kitchen coach, dynamic pricing
 - **Human-in-the-loop** — agents **propose** (DRAFT + manager notify); they do not auto-execute prices, POs, or refunds
 - **Shared AgentRuntime** — policy, audit logs, rule-based fallbacks when the model is unavailable
+- **Manager console** (`/console`) — scoped copilot, seven specialists, proposal review,
+  public run evidence and integrated text/voice. See [CONSOLE.md](CONSOLE.md) for contracts and limits.
 
 See [AGENT_PLATFORM.md](AGENT_PLATFORM.md) for architecture,
 [CAPABILITY_MAP.md](CAPABILITY_MAP.md) for tool ↔ platform APIs,

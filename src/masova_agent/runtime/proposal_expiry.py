@@ -22,10 +22,14 @@ def sweep_expired(max_age_hours: int = 72) -> int:
         if created_at.tzinfo is None:
             created_at = created_at.replace(tzinfo=timezone.utc)
         if created_at < cutoff:
-            proposal_store.resolve_proposal(
-                proposal["proposal_id"],
-                ProposalStatus.EXPIRED.value,
-                note="expired after 72h",
-            )
+            try:
+                proposal_store.resolve_proposal(
+                    proposal["proposal_id"],
+                    ProposalStatus.EXPIRED.value,
+                    note="expired after 72h",
+                )
+            except proposal_store.ProposalConflict:
+                # A manager or newer proposal won after the pending snapshot.
+                continue
             count += 1
     return count

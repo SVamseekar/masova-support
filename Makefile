@@ -1,4 +1,4 @@
-.PHONY: help install install-dev test chat web clean lint format setup hygiene audit
+.PHONY: help install install-dev test test-console chat web clean lint format setup hygiene audit
 
 help:  ## Show this help message
 	@echo "MaSoVa Agent - Available Commands:"
@@ -14,6 +14,9 @@ install-dev:  ## Install development dependencies
 
 test:  ## Run all tests
 	./scripts/run-tests.sh
+
+test-console:  ## Verify browser audio lifecycle with Node's built-in test runner
+	node --test tests/test_console_voice.cjs
 
 chat:  ## Start interactive chat
 	./scripts/start-chat.sh

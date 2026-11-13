@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MaSoVa AI · Operations console</title>
+  <link rel="stylesheet" href="/console-assets/console.css">
+  <script defer src="/console-assets/voice.js"></script>
+  <script defer src="/console-assets/console.js"></script>
+</head>
+<body>
+  <div class="shell">
+    <aside class="sidebar" aria-label="Workspace navigation">
+      <a class="brand" href="/console" aria-label="MaSoVa operations console">
+        <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M3 6h6l7 10L23 6h6v20h-6V15l-7 10L9 15v11H3z"/></svg>
+        MaSoVa
+      </a>
+      <p class="eyebrow">Operations workspace</p>
+      <nav id="navigation">
+        <button class="nav selected" data-view="manager" aria-current="page">Manager copilot</button>
+        <button class="nav" data-view="history">Run history</button>
+        <button class="nav" data-view="activity">Public activity</button>
+        <p class="eyebrow">Seven specialists</p>
+        <button class="nav" data-agent="demand_forecast">Demand forecast</button>
+        <button class="nav" data-agent="inventory_reorder">Inventory reorder</button>
+        <button class="nav" data-agent="churn_prevention">Churn prevention</button>
+        <button class="nav" data-agent="review_response">Review response</button>
+        <button class="nav" data-agent="shift_optimisation">Shift optimisation</button>
+        <button class="nav" data-agent="kitchen_coach">Kitchen coach</button>
+        <button class="nav" data-agent="dynamic_pricing">Dynamic pricing</button>
+      </nav>
+      <form id="connection" class="connection">
+        <label for="api-key">Console API key</label>
+        <input id="api-key" type="password" autocomplete="off" spellcheck="false" required>
+        <p class="small">Kept in memory for this tab. Reload to clear.</p>
+        <div class="actions"><button id="connect" type="submit">Connect</button>
+          <button id="disconnect" type="button" hidden>Disconnect</button></div>
+        <p id="connection-state" role="status">Not connected</p>
+      </form>
+    </aside>
+    <main>
+      <header class="page-header"><div><p class="eyebrow">MaSoVa AI</p>
+        <h1 id="page-title">Manager copilot</h1></div>
+        <div class="context"><label for="store">Read / record context</label>
+          <select id="store"><option value="">All stores</option></select></div>
+      </header>
+      <p id="notice" class="notice" role="status">Connect to read records and request operations. Decisions record review; final execution happens in the platform.</p>
+      <section id="specialist" class="specialist" hidden aria-label="Specialist task">
+        <div><h2 id="specialist-title"></h2><p id="specialist-task"></p>
+          <p id="specialist-scope" class="small"></p></div>
+        <button id="run-specialist" class="primary" type="button">Run specialist</button>
+        <form id="review-input" hidden>
+          <label for="review-id">Review ID</label><input id="review-id" required maxlength="128">
+          <label for="review-store">Review store ID</label><input id="review-store" required maxlength="128">
+          <label for="review-order">Order ID (optional)</label><input id="review-order" maxlength="128">
+          <label for="review-rating">Rating</label><select id="review-rating"><option>1</option><option>2</option><option>3</option></select>
+          <label for="review-text">Review text</label><textarea id="review-text" required maxlength="2000"></textarea>
+        </form>
+      </section>
+      <div class="workspace">
+        <section class="records" aria-label="Records and evidence">
+          <div class="section-heading"><h2>Records &amp; evidence</h2>
+            <button id="refresh" type="button">Refresh</button></div>
+          <div class="filters"><label for="record-type">Show</label>
+            <select id="record-type"><option value="proposals">Proposals</option><option value="runs">Runs</option><option value="activity">Activity</option></select>
+            <label for="record-status">Proposal status</label>
+            <select id="record-status"><option value="">All statuses</option><option>PENDING</option><option>APPROVED</option><option>REJECTED</option><option>EXPIRED</option><option>SUPERSEDED</option></select>
+          </div>
+          <p id="record-state" class="small" role="status">No records loaded.</p>
+          <div id="record-list" class="record-list"></div>
+          <div id="record-detail" class="record-detail"><p>Select a record to inspect its public evidence.</p></div>
+        </section>
+        <section class="conversation" aria-label="Manager conversation">
+          <div class="section-heading"><div><h2>Conversation</h2>
+            <p class="small">Read, compute and propose. You decide.</p></div>
+            <div class="actions"><button id="conversation-history" type="button" aria-haspopup="dialog"
+              aria-controls="history-drawer">Conversation history</button>
+              <button id="new-conversation" type="button">New conversation</button></div></div>
+          <div id="messages" class="messages" role="log" aria-label="Conversation messages" aria-live="polite">
+            <div class="welcome"><h3>What needs your attention?</h3>
+              <p>Ask about inventory, demand, staffing, kitchen performance or proposals.</p>
+              <p class="small">Answers use available tools. Provider and backend failures stay visible.</p></div>
+          </div>
+          <div class="voice-panel" aria-label="Manager voice">
+            <div class="voice-status"><span id="voice-state" role="status">Ready</span>
+              <meter id="voice-level" min="0" max="1" value="0" aria-label="Actual audio signal"></meter></div>
+            <div class="actions"><button id="voice-start" type="button">Record request</button>
+              <button id="voice-send" type="button" disabled>Stop &amp; send</button>
+              <button id="voice-mute" type="button" disabled>Mute</button>
+              <button id="voice-end" type="button" disabled>End</button></div>
+            <p class="small">Up to 60 seconds. Microphone stops before processing. Audio is not stored.</p>
+          </div>
+          <form id="composer"><label class="sr-only" for="message">Message MaSoVa AI</label>
+            <textarea id="message" placeholder="Message MaSoVa AI…" rows="2" maxlength="8000" required></textarea>
+            <button id="send" class="primary" type="submit">Send</button></form>
+          <p id="chat-state" class="small" role="status"></p>
+        </section>
+      </div>
+    </main>
+  </div>
+  <dialog id="history-drawer" class="history-drawer" aria-labelledby="history-title">
+    <div class="section-heading"><div><h2 id="history-title">Conversation history</h2>
+      <p id="history-context" class="small"></p></div>
+      <button id="history-close" type="button" aria-label="Close conversation history">Close</button></div>
+    <p class="small">Saved public text and transcripts for this credential and exact store context.
+      Reopen to continue. Raw audio is never archived. Latest 100 messages per conversation,
+      up to 2,000 characters per message.</p>
+    <p id="history-state" role="status" class="small"></p>
+    <button id="history-retry" type="button">Refresh history</button>
+    <div id="history-list" class="history-list" aria-label="Saved conversations"></div>
+  </dialog>
+</body>
+</html>

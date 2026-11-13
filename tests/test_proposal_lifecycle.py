@@ -68,3 +68,22 @@ def test_sweep_does_not_touch_resolved_proposals():
     proposal_store._by_id[p1["proposal_id"]]["created_at"] = stale_time
     proposal_expiry.sweep_expired(max_age_hours=72)
     assert proposal_store.get_proposal(p1["proposal_id"])["status"] == ProposalStatus.REJECTED.value
+
+
+def test_sweep_continues_when_manager_decides_after_pending_snapshot(monkeypatch):
+    first = _save(store_id="s1")
+    second = _save(store_id="s2")
+    stale_time = (datetime.now(timezone.utc) - timedelta(hours=73)).isoformat()
+    for proposal in (first, second):
+        proposal_store._by_id[proposal["proposal_id"]]["created_at"] = stale_time
+    resolve = proposal_store.resolve_proposal
+
+    def racing_resolution(proposal_id, status, note=""):
+        if proposal_id == first["proposal_id"] and status == "EXPIRED":
+            resolve(proposal_id, "APPROVED", "manager reviewed during sweep")
+        return resolve(proposal_id, status, note)
+
+    monkeypatch.setattr(proposal_store, "resolve_proposal", racing_resolution)
+    assert proposal_expiry.sweep_expired(max_age_hours=72) == 1
+    assert proposal_store.get_proposal(first["proposal_id"])["status"] == "APPROVED"
+    assert proposal_store.get_proposal(second["proposal_id"])["status"] == "EXPIRED"

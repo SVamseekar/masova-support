@@ -165,6 +165,10 @@ class AgentRuntime:
                     "summary": audit_record.get("summary"),
                     "run_id": audit_record.get("run_id"),
                     "status": audit_record.get("status"),
+                    "tools_used": audit_record.get("tools_used") or [],
+                    "used_fallback": audit_record.get("used_fallback"),
+                    "latency_ms": audit_record.get("latency_ms"),
+                    "proposal_count": audit_record.get("proposal_count"),
                 }
             )
         except Exception as re:

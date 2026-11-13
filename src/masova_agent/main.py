@@ -6,18 +6,24 @@ Run:
 """
 
 import asyncio
+import base64
+import binascii
 import json
 import logging
 import os
 import uuid
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Optional
 
 from dotenv import load_dotenv
-from fastapi import Depends, FastAPI, HTTPException, Body, Request
+from fastapi import Depends, FastAPI, HTTPException, Body, Request, Query
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
-from pydantic import BaseModel
+from fastapi.exceptions import RequestValidationError
+from fastapi.exception_handlers import request_validation_exception_handler
+from fastapi.responses import JSONResponse, FileResponse
+from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel, Field, AliasChoices, model_validator
 
 from .agent import send_message_async, _session_service
 from .auth import (
@@ -90,6 +96,31 @@ app = FastAPI(
     version="0.3.0",
     lifespan=lifespan,
 )
+
+_console_dir = Path(__file__).parent / "static"
+app.mount("/console-assets", StaticFiles(directory=_console_dir), name="console-assets")
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_errors(request: Request, exc: RequestValidationError):
+    if request.url.path == "/agent/manager/chat":
+        # Default validation errors echo the input; recordings must remain transient.
+        return JSONResponse(
+            status_code=422,
+            content={
+                "detail": [
+                    {"loc": error["loc"], "msg": error["msg"], "type": error["type"]}
+                    for error in exc.errors()
+                ]
+            },
+        )
+    return await request_validation_exception_handler(request, exc)
+
+
+@app.get("/console", include_in_schema=False)
+async def console():
+    return FileResponse(_console_dir / "console.html")
+
 
 _origins = os.getenv(
     "CORS_ORIGINS",
@@ -256,7 +287,7 @@ async def trigger_dynamic_pricing():
 
 class ResolveProposalBody(BaseModel):
     status: str  # APPROVED | REJECTED
-    note: Optional[str] = None
+    note: Optional[str] = Field(default=None, max_length=2000)
 
 
 @app.get("/agent/proposals", dependencies=[Depends(require_scope("read:proposals"))])
@@ -288,8 +319,12 @@ async def list_action_proposals(
 async def resolve_action_proposal(proposal_id: str, body: ResolveProposalBody):
     from .runtime import proposal_store
 
+    if body.status.upper() not in ("APPROVED", "REJECTED"):
+        raise HTTPException(status_code=400, detail="Only APPROVED or REJECTED may be recorded")
     try:
         rec = proposal_store.resolve_proposal(proposal_id, body.status, note=body.note or "")
+    except proposal_store.ProposalConflict as e:
+        raise HTTPException(status_code=409, detail=str(e))
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     if not rec:
@@ -298,16 +333,141 @@ async def resolve_action_proposal(proposal_id: str, body: ResolveProposalBody):
 
 
 class ManagerChatRequest(BaseModel):
-    message: str
-    session_id: Optional[str] = "default"
-    store_id: Optional[str] = None
+    message: str = Field(default="", max_length=8000)
+    session_id: Optional[str] = Field(
+        default="default", max_length=128, validation_alias=AliasChoices("session_id", "sessionId")
+    )
+    store_id: Optional[str] = Field(
+        default=None, max_length=128, validation_alias=AliasChoices("store_id", "storeId")
+    )
+    audio_base64: Optional[str] = Field(
+        default=None,
+        max_length=5592408,
+        validation_alias=AliasChoices("audio_base64", "audioBase64"),
+    )
+    mime_type: str = Field(
+        default="audio/webm", validation_alias=AliasChoices("mime_type", "mimeType")
+    )
+
+    @model_validator(mode="before")
+    @classmethod
+    def unambiguous_aliases(cls, value):
+        if isinstance(value, dict):
+            for snake, camel in [
+                ("session_id", "sessionId"),
+                ("store_id", "storeId"),
+                ("audio_base64", "audioBase64"),
+                ("mime_type", "mimeType"),
+            ]:
+                if snake in value and camel in value and value[snake] != value[camel]:
+                    raise ValueError(f"Conflicting {snake}/{camel} values")
+        return value
+
+    @model_validator(mode="after")
+    def valid_input(self):
+        from .agents.manager_audio import AUDIO_MIME_TYPES, MAX_AUDIO_BYTES
+
+        self.message = self.message.strip()
+        if not self.message and not self.audio_base64:
+            raise ValueError("Provide a non-empty message or audio recording")
+        if self.audio_base64:
+            if self.mime_type not in AUDIO_MIME_TYPES:
+                raise ValueError("Unsupported audio MIME type")
+            try:
+                audio = base64.b64decode(self.audio_base64, validate=True)
+            except (ValueError, binascii.Error):
+                raise ValueError("Invalid base64 audio")
+            if not audio or len(audio) > MAX_AUDIO_BYTES:
+                raise ValueError("Audio must be between 1 byte and 4 MiB")
+        return self
 
 
 @app.post("/agent/manager/chat")
 async def manager_chat(body: ManagerChatRequest, _=Depends(require_scope("chat:manager"))):
     from .agents.manager_chat_agent import run_manager_chat
 
-    return await run_manager_chat(body.message, body.session_id or "default", body.store_id)
+    try:
+        return await run_manager_chat(
+            body.message,
+            body.session_id or "default",
+            body.store_id,
+            audio_base64=body.audio_base64,
+            mime_type=body.mime_type,
+            scopes=_.get("scopes") or [],
+            principal=_.get("key") or "manager",
+        )
+    except Exception:
+        raise HTTPException(
+            status_code=502, detail="Manager speech unavailable. Retry or type a message."
+        )
+
+
+@app.get("/agent/manager/conversations")
+async def manager_conversations(
+    storeId: Optional[str] = Query(default=None, max_length=128),
+    limit: int = Query(default=50, ge=1, le=128),
+    identity=Depends(require_scope("chat:manager")),
+):
+    from .runtime import conversation_store
+
+    try:
+        rows = await asyncio.to_thread(
+            conversation_store.list_conversations, identity["key"], storeId, limit
+        )
+    except conversation_store.HistoryUnavailable:
+        raise HTTPException(
+            status_code=503, detail="Conversation history unavailable. Retry later."
+        )
+    return {"conversations": rows, "storeId": storeId or None}
+
+
+@app.get("/agent/manager/conversations/{session_id}")
+async def manager_conversation(
+    session_id: str,
+    storeId: Optional[str] = Query(default=None, max_length=128),
+    identity=Depends(require_scope("chat:manager")),
+):
+    from .runtime import conversation_store
+
+    if not session_id or len(session_id) > 128:
+        raise HTTPException(status_code=422, detail="Invalid conversation ID")
+    try:
+        record = await asyncio.to_thread(
+            conversation_store.get_conversation, identity["key"], storeId, session_id
+        )
+    except conversation_store.HistoryUnavailable:
+        raise HTTPException(
+            status_code=503, detail="Conversation history unavailable. Retry later."
+        )
+    if record is None:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    return {"conversation": record}
+
+
+@app.get("/agent/manager/stores")
+async def manager_stores(_=Depends(require_scope("read:registry"))):
+    from .tools.ops_tools import list_stores
+
+    import httpx
+
+    try:
+        return await list_stores()
+    except httpx.RequestError as ex:
+        raise HTTPException(
+            status_code=503,
+            detail="Store lookup unavailable. Retry when the backend reconnects.",
+        ) from ex
+
+
+@app.get("/agent/console")
+async def console_catalog(identity=Depends(require_scope("read:registry"))):
+    from .runtime.console_catalog import SPECIALISTS
+
+    return {
+        "specialists": SPECIALISTS,
+        "scopes": identity.get("scopes") or [],
+        "decision_execution": "record_only",
+    }
 
 
 @app.get("/agents")
@@ -318,10 +478,15 @@ async def list_agents(_=Depends(require_scope("read:registry"))):
 
 
 @app.get("/agent/runs")
-async def get_runs(limit: int = 100, _=Depends(require_scope("read:runs"))):
+async def get_runs(
+    limit: int = Query(default=100, ge=1, le=500),
+    agent: Optional[str] = None,
+    storeId: Optional[str] = None,
+    _=Depends(require_scope("read:runs")),
+):
     from .runtime import run_store
 
-    return run_store.list_runs(limit=limit)
+    return run_store.list_runs(limit=limit, agent=agent, store_id=storeId)
 
 
 @app.get("/agent/runs/{run_id}")

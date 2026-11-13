@@ -23,6 +23,51 @@ from masova_agent.runtime.wrap import AGENT_ALLOWLISTS, run_ops_agent
 from masova_agent.tools import ops_tools
 
 
+@pytest.mark.asyncio
+async def test_typed_provider_thought_parts_never_enter_public_summary(monkeypatch):
+    from google import genai
+    from google.genai import types
+    from types import SimpleNamespace
+    from masova_agent.runtime.ops_llm import run_genai_tool_loop
+
+    response = SimpleNamespace(
+        candidates=[
+            SimpleNamespace(
+                content=types.Content(
+                    role="model",
+                    parts=[
+                        types.Part(text="SYNTHETIC_PRIVATE_MARKER", thought=True),
+                        types.Part(text="Public answer"),
+                    ],
+                )
+            )
+        ]
+    )
+    provider = SimpleNamespace(
+        aio=SimpleNamespace(
+            models=SimpleNamespace(generate_content=AsyncMock(return_value=response)),
+            aclose=AsyncMock(),
+        ),
+        close=lambda: None,
+    )
+    monkeypatch.setattr(genai, "Client", lambda **kwargs: provider)
+    result = await run_genai_tool_loop(
+        AgentRunRequest(
+            agent_name="manager_copilot",
+            trigger_type="manual",
+            goal="Synthetic test",
+            allowed_tools=["list_stores"],
+        ),
+        instruction="Use public evidence",
+        tools={},
+        tool_schemas={},
+        api_key="synthetic-key",
+    )
+    assert result["summary"] == "Public answer"
+    assert result["rationale"] == "Public answer"
+    assert "SYNTHETIC_PRIVATE_MARKER" not in str(result)
+
+
 @pytest.fixture(autouse=True)
 def _reset():
     reset_runtime_for_tests()

@@ -54,6 +54,9 @@ Repository = "https://github.com/masova/masova-support"
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+masova_agent = ["static/*.html", "static/*.css", "static/*.js"]
+
 [tool.black]
 line-length = 100
 target-version = ['py39', 'py310', 'py311', 'py312']

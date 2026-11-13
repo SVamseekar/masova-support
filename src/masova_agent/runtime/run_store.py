@@ -57,8 +57,16 @@ def verify_chain(path: str | None = None) -> bool:
     return True
 
 
-def list_runs(limit: int = 100) -> list[dict]:
-    return list(reversed(_read_all()))[:limit]
+def list_runs(
+    limit: int = 100, *, agent: str | None = None, store_id: str | None = None
+) -> list[dict]:
+    records = reversed(_read_all())
+    return [
+        r
+        for r in records
+        if (not agent or r.get("agent") == agent)
+        and (not store_id or r.get("store_id") == store_id)
+    ][: max(1, min(limit, 500))]
 
 
 def get_run(run_id: str) -> dict | None:

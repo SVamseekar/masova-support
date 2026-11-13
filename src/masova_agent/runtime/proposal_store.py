@@ -126,14 +126,19 @@ def resolve_proposal(
         ProposalStatus.SUPERSEDED.value,
     ):
         raise ValueError("status must be APPROVED, REJECTED, EXPIRED, or SUPERSEDED")
-    rec = get_proposal(proposal_id)
-    if not rec:
-        return None
-    rec = dict(rec)
-    rec["status"] = status
-    rec["resolution_note"] = note or ""
-    rec["resolved_at"] = _utc_now_iso()
+    _load_file_once()
     with _lock:
+        current = _by_id.get(proposal_id)
+        if not current:
+            return None
+        if current.get("status") == status:
+            return dict(current)
+        if current.get("status") != ProposalStatus.PENDING.value:
+            raise ProposalConflict("proposal already resolved; decision cannot be changed")
+        rec = dict(current)
+        rec["status"] = status
+        rec["resolution_note"] = note or ""
+        rec["resolved_at"] = _utc_now_iso()
         _by_id[proposal_id] = rec
         try:
             d = _data_dir()
@@ -142,7 +147,11 @@ def resolve_proposal(
                 f.write(json.dumps({"event": "resolve", **rec}, default=str) + "\n")
         except Exception as e:
             logger.warning("proposal resolve append failed: %s", e)
-    return rec
+    return dict(rec)
+
+
+class ProposalConflict(ValueError):
+    """A competing or terminal proposal decision cannot be overwritten."""
 
 
 _loaded = False
