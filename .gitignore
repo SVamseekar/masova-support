@@ -110,3 +110,6 @@ masova_agent_legacy/
 # Local durable stores (knowledge markdown is tracked)
 data/proposals/
 data/runs/
+
+# Claude Code local MCP config (env-var refs, not for git)
+.mcp.json
