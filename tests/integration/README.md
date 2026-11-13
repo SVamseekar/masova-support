@@ -8,7 +8,7 @@ These tests call the real MaSoVa Java api-gateway via `ops_tools` (the #52–#55
 
 ```bash
 RUN_INTEGRATION_TESTS=1 \
-  BACKEND_URL=http://192.168.50.88:8080 \
+  BACKEND_URL=http://localhost:8080 \
   AGENT_TOKEN=<ops bearer token> \
   TEST_STORE_ID=DOM001 \
   pytest -m integration
@@ -24,5 +24,5 @@ Without `RUN_INTEGRATION_TESTS=1`, collected tests skip (no network calls).
 Confirm the gateway is up first:
 
 ```bash
-BACKEND_URL=http://192.168.50.88:8080 python scripts/check_backend_connectivity.py
+BACKEND_URL=http://localhost:8080 python scripts/check_backend_connectivity.py
 ```

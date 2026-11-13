@@ -92,7 +92,6 @@ GEMINI.md
 .grok/
 
 # Agent scratch (not product documentation)
-docs/
 plans/
 plan/
 specs/
@@ -113,3 +112,5 @@ data/runs/
 
 # Claude Code local MCP config (env-var refs, not for git)
 .mcp.json
+_local/
+_to_delete/

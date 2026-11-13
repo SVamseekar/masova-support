@@ -13,10 +13,10 @@ AI-powered customer support and ops agents for the MaSoVa restaurant platform, b
 - **Human-in-the-loop** — agents **propose** (DRAFT + manager notify); they do not auto-execute prices, POs, or refunds
 - **Shared AgentRuntime** — policy, audit logs, rule-based fallbacks when the model is unavailable
 
-See [AGENT_PLATFORM.md](AGENT_PLATFORM.md) for architecture,
-[CAPABILITY_MAP.md](CAPABILITY_MAP.md) for tool ↔ platform APIs,
-[RUNBOOK.md](RUNBOOK.md) for operations, and
-[SMOKE.md](SMOKE.md) for live probes.
+See [AGENT_PLATFORM.md](docs/AGENT_PLATFORM.md) for architecture,
+[CAPABILITY_MAP.md](docs/CAPABILITY_MAP.md) for tool ↔ platform APIs,
+[RUNBOOK.md](docs/RUNBOOK.md) for operations, and
+[SMOKE.md](docs/SMOKE.md) for live probes.
 
 **Design:** industry-style vertical agents — secure identity, tool-grounded numbers, human approval proposals, rule fallbacks, contract-mapped APIs, audited runs, CI evals — not an omniscient autonomous platform brain.
 
@@ -80,9 +80,9 @@ src/masova_agent/
 tests/                  # unit + tests/eval industry harness
 .github/workflows/ci.yml
 config/env.example
-AGENT_PLATFORM.md       # architecture
-CAPABILITY_MAP.md       # tool ↔ HTTP map
-RUNBOOK.md SMOKE.md     # ops + live probes
+docs/AGENT_PLATFORM.md       # architecture
+docs/CAPABILITY_MAP.md       # tool ↔ HTTP map
+docs/RUNBOOK.md docs/SMOKE.md  # ops + live probes
 ```
 
 ## Auth model
@@ -97,7 +97,7 @@ Customer tools never trust LLM-supplied customer IDs; identity is bound from the
 
 ## Releases
 
-Semantic versions `vMAJOR.MINOR.PATCH`. See [RELEASING.md](RELEASING.md) and [CHANGELOG.md](CHANGELOG.md).
+Semantic versions `vMAJOR.MINOR.PATCH`. See [RELEASING.md](docs/RELEASING.md) and [CHANGELOG.md](CHANGELOG.md).
 
 ## Security
 

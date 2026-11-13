@@ -70,4 +70,4 @@ starlette ignores.
 
 ## Releases
 
-See [RELEASING.md](RELEASING.md).
+See [RELEASING.md](docs/RELEASING.md).
