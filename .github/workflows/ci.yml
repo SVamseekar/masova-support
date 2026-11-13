@@ -71,6 +71,10 @@ jobs:
       - name: Dependency audit
         # google-adk 1.35 requires starlette<1.0; the listed CVEs are only fixed in starlette 1.x.
         # Revisit when leaving the ADK 1.28–1.35 line. Do not add ignores without a comment.
+        # CVE-2026-114603 (opentelemetry-api <1.45.1, tracestate regex CPU DoS): every google-adk
+        # release up to 1.39.1 pins opentelemetry-api<=1.41.1, so no compatible fix exists. Only
+        # reachable when inbound W3C trace context is extracted; this service does not install
+        # request-tracing instrumentation. Remove once google-adk allows opentelemetry-api>=1.45.1.
         run: >
           pip-audit -r requirements.txt --progress-spinner off
           --ignore-vuln PYSEC-2026-161
@@ -78,3 +82,4 @@ jobs:
           --ignore-vuln PYSEC-2026-2281
           --ignore-vuln PYSEC-2026-248
           --ignore-vuln PYSEC-2026-249
+          --ignore-vuln CVE-2026-114603
